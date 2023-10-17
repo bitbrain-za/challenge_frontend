@@ -1,36 +1,50 @@
-#[derive(PartialEq, serde::Deserialize, serde::Serialize)]
-enum DemoType {
-    Manual,
-    ManyHomogeneous,
-    ManyHeterogenous,
+use std::fmt::{self, Display, Formatter};
+
+#[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
+enum FilterOption {
+    All,
+    UniquePlayers,
+    UniqueLanguage,
+}
+
+#[derive(Default, PartialEq, Copy, Clone, serde::Deserialize, serde::Serialize)]
+enum Challenges {
+    #[default]
+    C2331,
+    C2332,
+    C2333,
+}
+
+impl Display for Challenges {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Challenges::C2331 => write!(f, "2331"),
+            Challenges::C2332 => write!(f, "2332"),
+            Challenges::C2333 => write!(f, "2333"),
+        }
+    }
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ScoreBoardApp {
-    demo: DemoType,
-    striped: bool,
-    resizable: bool,
-    num_rows: usize,
-    scroll_to_row_slider: usize,
-    scroll_to_row: Option<usize>,
+    challenge: Challenges,
+    filter: FilterOption,
+    sort_column: String,
 }
 
 impl Default for ScoreBoardApp {
     fn default() -> Self {
         Self {
-            demo: DemoType::Manual,
-            striped: true,
-            resizable: true,
-            num_rows: 10_000,
-            scroll_to_row_slider: 0,
-            scroll_to_row: None,
+            challenge: Challenges::default(),
+            filter: FilterOption::All,
+            sort_column: "time_ns".to_string(),
         }
     }
 }
 
 impl super::App for ScoreBoardApp {
     fn name(&self) -> &'static str {
-        "☰ Table Demo"
+        "☰ Score Board"
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
@@ -49,47 +63,31 @@ const NUM_MANUAL_ROWS: usize = 20;
 impl super::View for ScoreBoardApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut self.striped, "Striped");
-                ui.checkbox(&mut self.resizable, "Resizable columns");
-            });
+            egui::ComboBox::from_label("Challenge")
+                .selected_text(format!("{}", self.challenge))
+                .show_ui(ui, |ui| {
+                    ui.style_mut().wrap = Some(false);
+                    ui.set_min_width(60.0);
+                    ui.selectable_value(&mut self.challenge, Challenges::C2331, "2331");
+                    ui.selectable_value(&mut self.challenge, Challenges::C2332, "2332");
+                    ui.selectable_value(&mut self.challenge, Challenges::C2333, "2333");
+                });
 
-            ui.label("Table type:");
-            ui.radio_value(&mut self.demo, DemoType::Manual, "Few, manual rows");
+            ui.label("Filter:");
+            ui.radio_value(&mut self.filter, FilterOption::All, "All");
             ui.radio_value(
-                &mut self.demo,
-                DemoType::ManyHomogeneous,
-                "Thousands of rows of same height",
+                &mut self.filter,
+                FilterOption::UniquePlayers,
+                "Unique Players",
             );
             ui.radio_value(
-                &mut self.demo,
-                DemoType::ManyHeterogenous,
-                "Thousands of rows of differing heights",
+                &mut self.filter,
+                FilterOption::UniqueLanguage,
+                "Unique Langauges",
             );
-
-            if self.demo != DemoType::Manual {
-                ui.add(
-                    egui::Slider::new(&mut self.num_rows, 0..=100_000)
-                        .logarithmic(true)
-                        .text("Num rows"),
-                );
-            }
 
             {
-                let max_rows = if self.demo == DemoType::Manual {
-                    NUM_MANUAL_ROWS
-                } else {
-                    self.num_rows
-                };
-
-                let slider_response = ui.add(
-                    egui::Slider::new(&mut self.scroll_to_row_slider, 0..=max_rows)
-                        .logarithmic(true)
-                        .text("Row to scroll to"),
-                );
-                if slider_response.changed() {
-                    self.scroll_to_row = Some(self.scroll_to_row_slider);
-                }
+                let max_rows = 100;
             }
         });
 
@@ -120,18 +118,12 @@ impl ScoreBoardApp {
         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
 
         let mut table = TableBuilder::new(ui)
-            .striped(self.striped)
-            .resizable(self.resizable)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::auto())
             .column(Column::initial(100.0).range(40.0..=300.0))
             .column(Column::initial(100.0).at_least(40.0).clip(true))
             .column(Column::remainder())
             .min_scrolled_height(0.0);
-
-        if let Some(row_nr) = self.scroll_to_row.take() {
-            table = table.scroll_to_row(row_nr, None);
-        }
 
         table
             .header(20.0, |mut header| {
@@ -148,34 +140,11 @@ impl ScoreBoardApp {
                     ui.strong("Content");
                 });
             })
-            .body(|mut body| match self.demo {
-                DemoType::Manual => {
-                    for row_index in 0..NUM_MANUAL_ROWS {
-                        let is_thick = thick_row(row_index);
-                        let row_height = if is_thick { 30.0 } else { 18.0 };
-                        body.row(row_height, |mut row| {
-                            row.col(|ui| {
-                                ui.label(row_index.to_string());
-                            });
-                            row.col(|ui| {
-                                expanding_content(ui);
-                            });
-                            row.col(|ui| {
-                                ui.label(long_text(row_index));
-                            });
-                            row.col(|ui| {
-                                ui.style_mut().wrap = Some(false);
-                                if is_thick {
-                                    ui.heading("Extra thick row");
-                                } else {
-                                    ui.label("Normal row");
-                                }
-                            });
-                        });
-                    }
-                }
-                DemoType::ManyHomogeneous => {
-                    body.rows(text_height, self.num_rows, |row_index, mut row| {
+            .body(|mut body| {
+                for row_index in 0..NUM_MANUAL_ROWS {
+                    let is_thick = thick_row(row_index);
+                    let row_height = if is_thick { 30.0 } else { 18.0 };
+                    body.row(row_height, |mut row| {
                         row.col(|ui| {
                             ui.label(row_index.to_string());
                         });
@@ -186,42 +155,14 @@ impl ScoreBoardApp {
                             ui.label(long_text(row_index));
                         });
                         row.col(|ui| {
-                            ui.add(
-                                egui::Label::new("Thousands of rows of even height").wrap(false),
-                            );
+                            ui.style_mut().wrap = Some(false);
+                            if is_thick {
+                                ui.heading("Extra thick row");
+                            } else {
+                                ui.label("Normal row");
+                            }
                         });
                     });
-                }
-                DemoType::ManyHeterogenous => {
-                    fn row_thickness(row_index: usize) -> f32 {
-                        if thick_row(row_index) {
-                            30.0
-                        } else {
-                            18.0
-                        }
-                    }
-                    body.heterogeneous_rows(
-                        (0..self.num_rows).map(row_thickness),
-                        |row_index, mut row| {
-                            row.col(|ui| {
-                                ui.label(row_index.to_string());
-                            });
-                            row.col(|ui| {
-                                expanding_content(ui);
-                            });
-                            row.col(|ui| {
-                                ui.label(long_text(row_index));
-                            });
-                            row.col(|ui| {
-                                ui.style_mut().wrap = Some(false);
-                                if thick_row(row_index) {
-                                    ui.heading("Extra thick row");
-                                } else {
-                                    ui.label("Normal row");
-                                }
-                            });
-                        },
-                    );
                 }
             });
     }
