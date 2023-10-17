@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 mod apps;
+use simple_logger::SimpleLogger;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
@@ -27,6 +28,7 @@ fn main() {
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
     let web_options = eframe::WebOptions::default();
+    log::debug!("Starting eframe on wasm32");
 
     wasm_bindgen_futures::spawn_local(async {
         eframe::WebRunner::new()

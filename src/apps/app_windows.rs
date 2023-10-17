@@ -11,13 +11,15 @@ use super::View;
 struct Apps {
     #[serde(skip)] // This how you opt-out of serialization of a field
     apps: Vec<Box<dyn App>>,
-
     open: BTreeSet<String>,
 }
 
 impl Default for Apps {
     fn default() -> Self {
-        Self::from_apps(vec![Box::<super::scoreboard_app::ScoreBoardApp>::default()])
+        Self::from_apps(vec![
+            Box::<super::scoreboard_app::ScoreBoardApp>::default(),
+            // Box::<super::code_editor::CodeEditor>::default(),
+        ])
     }
 }
 
@@ -35,6 +37,7 @@ impl Apps {
 
     pub fn checkboxes(&mut self, ui: &mut Ui) {
         let Self { apps, open } = self;
+        ui.label(format!("{} apps", apps.len()));
         for app in apps {
             let mut is_open = open.contains(app.name());
             ui.toggle_value(&mut is_open, app.name());
@@ -102,7 +105,7 @@ impl AppWindows {
 
                 ui.separator();
 
-                use egui::special_emojis::{GITHUB, TWITTER};
+                use egui::special_emojis::GITHUB;
                 ui.hyperlink_to(
                     format!("{GITHUB} GitHub"),
                     "https://github.com/bitbrain-za/judge_2331-rs",
@@ -110,11 +113,11 @@ impl AppWindows {
                 ui.separator();
             });
 
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                file_menu_button(ui);
-            });
-        });
+        // egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+        //     egui::menu::bar(ui, |ui| {
+        //         file_menu_button(ui);
+        //     });
+        // });
 
         self.show_windows(ctx);
     }
@@ -129,9 +132,7 @@ impl AppWindows {
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                 // ui.toggle_value(&mut self.about_is_open, self.about.name());
 
-                ui.separator();
                 self.apps.checkboxes(ui);
-                ui.separator();
             });
         });
     }
