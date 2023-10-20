@@ -1,6 +1,6 @@
 [package]
 name = "challenge_frontend"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 rust-version = "1.71"
 
@@ -15,6 +15,10 @@ eframe = { version = "0.23.0", default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
 log = "0.4"
+scoreboard_db = { path = "../workspace/scoreboard_db" }
+reqwest = {version = "0.11.22", features = ["json"]}
+tokio = { version = "1", features = ["net", "rt-multi-thread"] }
+lazy_static = "1.4"
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }

@@ -1,4 +1,15 @@
+use lazy_static::lazy_static;
+use scoreboard_db::Builder as FilterBuilder;
+use scoreboard_db::{NiceTime, Score, ScoreBoard};
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
+use std::sync::Mutex;
+use std::time::Duration;
+use tokio::runtime::{EnterGuard, Runtime};
+
+lazy_static! {
+    static ref SCORES: Mutex<HashMap<Challenges, Vec<Score>>> = Mutex::new(HashMap::new());
+}
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -7,12 +18,22 @@ enum FilterOption {
     UniqueLanguage,
 }
 
-#[derive(Default, PartialEq, Copy, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize)]
 enum Challenges {
     #[default]
     C2331,
     C2332,
     C2333,
+}
+
+impl Challenges {
+    fn next(&self) -> Self {
+        match self {
+            Challenges::C2331 => Challenges::C2332,
+            Challenges::C2332 => Challenges::C2333,
+            Challenges::C2333 => Challenges::C2331,
+        }
+    }
 }
 
 impl Display for Challenges {
@@ -25,7 +46,7 @@ impl Display for Challenges {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 pub struct ScoreBoardApp {
     challenge: Challenges,
     filter: FilterOption,
@@ -34,11 +55,42 @@ pub struct ScoreBoardApp {
 
 impl Default for ScoreBoardApp {
     fn default() -> Self {
+        Self::start();
         Self {
             challenge: Challenges::default(),
             filter: FilterOption::All,
             sort_column: "time_ns".to_string(),
         }
+    }
+}
+
+impl ScoreBoardApp {
+    pub fn start() {
+        let rt = Runtime::new().expect("Unable to create Runtime");
+        let _ = rt.enter();
+
+        let mut challenge = Challenges::C2331;
+        std::thread::spawn(move || {
+            rt.block_on(async {
+                loop {
+                    if false {
+                        tokio::time::sleep(Duration::from_secs(10)).await;
+                    } else {
+                        let url = format!("http://127.0.0.1:3000/scores/{}", &challenge);
+                        let body = reqwest::get(url)
+                            .await
+                            .expect("Error doing GET")
+                            .json::<Vec<Score>>()
+                            .await
+                            .expect("Error parsing");
+
+                        let mut scores = SCORES.lock().unwrap();
+                        scores.insert(challenge.clone(), body.clone());
+                        challenge = challenge.next();
+                    }
+                }
+            })
+        });
     }
 }
 
@@ -57,8 +109,6 @@ impl super::App for ScoreBoardApp {
             });
     }
 }
-
-const NUM_MANUAL_ROWS: usize = 20;
 
 impl super::View for ScoreBoardApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
@@ -85,10 +135,6 @@ impl super::View for ScoreBoardApp {
                 FilterOption::UniqueLanguage,
                 "Unique Langauges",
             );
-
-            {
-                let max_rows = 100;
-            }
         });
 
         ui.separator();
@@ -114,6 +160,7 @@ impl super::View for ScoreBoardApp {
 impl ScoreBoardApp {
     fn table_ui(&mut self, ui: &mut egui::Ui) {
         use egui_extras::{Column, TableBuilder};
+        log::debug!("Table UI");
 
         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
 
@@ -128,61 +175,49 @@ impl ScoreBoardApp {
         table
             .header(20.0, |mut header| {
                 header.col(|ui| {
-                    ui.strong("Row");
+                    ui.strong("#");
                 });
                 header.col(|ui| {
-                    ui.strong("Expanding content");
+                    ui.strong("Time");
                 });
                 header.col(|ui| {
-                    ui.strong("Clipped text");
+                    ui.strong("Name");
                 });
                 header.col(|ui| {
-                    ui.strong("Content");
+                    ui.strong("Language");
+                });
+                header.col(|ui| {
+                    ui.strong("Binary");
                 });
             })
             .body(|mut body| {
-                for row_index in 0..NUM_MANUAL_ROWS {
-                    let is_thick = thick_row(row_index);
-                    let row_height = if is_thick { 30.0 } else { 18.0 };
-                    body.row(row_height, |mut row| {
+                let scores = SCORES.lock().unwrap();
+                let scores = scores.get(&self.challenge).unwrap();
+
+                for (i, score) in scores.iter().enumerate() {
+                    let time = NiceTime::new(score.time_ns);
+                    let name = score.name.clone();
+                    let language = score.language.clone();
+                    let binary = score.command.clone();
+
+                    body.row(text_height, |mut row| {
                         row.col(|ui| {
-                            ui.label(row_index.to_string());
+                            ui.label(i.to_string());
                         });
                         row.col(|ui| {
-                            expanding_content(ui);
+                            ui.label(time.to_string());
                         });
                         row.col(|ui| {
-                            ui.label(long_text(row_index));
+                            ui.label(name);
                         });
                         row.col(|ui| {
-                            ui.style_mut().wrap = Some(false);
-                            if is_thick {
-                                ui.heading("Extra thick row");
-                            } else {
-                                ui.label("Normal row");
-                            }
+                            ui.label(language);
+                        });
+                        row.col(|ui| {
+                            ui.label(binary);
                         });
                     });
                 }
             });
     }
-}
-
-fn expanding_content(ui: &mut egui::Ui) {
-    let width = ui.available_width().clamp(20.0, 200.0);
-    let height = ui.available_height();
-    let (rect, _response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-    ui.painter().hline(
-        rect.x_range(),
-        rect.center().y,
-        (1.0, ui.visuals().text_color()),
-    );
-}
-
-fn long_text(row_index: usize) -> String {
-    format!("Row {row_index} has some long text that you may want to clip, or it will take up too much horizontal space!")
-}
-
-fn thick_row(row_index: usize) -> bool {
-    row_index % 6 == 0
 }
