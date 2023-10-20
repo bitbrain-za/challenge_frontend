@@ -1,6 +1,7 @@
 use poll_promise::Promise;
 use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::{NiceTime, Score, ScoreBoard};
+use serde_json;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Mutex;
@@ -23,7 +24,7 @@ enum Challenges {
 
 struct Resource {
     response: ehttp::Response,
-    scores: Option<String>,
+    scores: Vec<Score>,
 }
 
 impl Resource {
@@ -31,14 +32,9 @@ impl Resource {
         let content_type = response.content_type().unwrap_or_default();
         let text = response.text();
         let text = text.map(|text| text.to_owned());
+        let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
 
-        log::debug!("Content-Type: {}", content_type);
-        log::debug!("Text: {}", text.as_ref().map_or("None", String::as_str));
-
-        Self {
-            response,
-            scores: text,
-        }
+        Self { response, scores }
     }
 }
 
@@ -68,10 +64,16 @@ pub struct ScoreBoardApp {
     filter: FilterOption,
     sort_column: String,
 
+    active_challenge: Challenges,
+    active_filter: FilterOption,
+    active_sort_column: String,
+
     #[serde(skip)]
     promise: Option<Promise<ehttp::Result<Resource>>>,
     #[serde(skip)]
     url: String,
+    #[serde(skip)]
+    refresh: bool,
 }
 
 impl Default for ScoreBoardApp {
@@ -82,12 +84,20 @@ impl Default for ScoreBoardApp {
             sort_column: "time_ns".to_string(),
             promise: Default::default(),
             url: "http://127.0.0.1:3000/scores/".to_string(),
+            refresh: true,
+
+            active_challenge: Challenges::default(),
+            active_filter: FilterOption::All,
+            active_sort_column: "time_ns".to_string(),
         }
     }
 }
 
 impl ScoreBoardApp {
     fn fetch(&mut self, ctx: &egui::Context) {
+        if !self.refresh {
+            return;
+        }
         let url = format!("{}{}", self.url, self.challenge);
         let ctx = ctx.clone();
         let (sender, promise) = Promise::new();
@@ -98,6 +108,19 @@ impl ScoreBoardApp {
             sender.send(resource);
         });
         self.promise = Some(promise);
+        self.refresh = false;
+    }
+
+    fn check_for_reload(&mut self) {
+        if self.active_challenge != self.challenge
+            || self.active_filter != self.filter
+            || self.active_sort_column != self.sort_column
+        {
+            self.active_challenge = self.challenge;
+            self.active_filter = self.filter;
+            self.active_sort_column = self.sort_column.clone();
+            self.refresh = true;
+        }
     }
 }
 
@@ -120,6 +143,8 @@ impl super::App for ScoreBoardApp {
 
 impl super::View for ScoreBoardApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
+        self.check_for_reload();
+
         ui.vertical(|ui| {
             egui::ComboBox::from_label("Challenge")
                 .selected_text(format!("{}", self.challenge))
@@ -168,11 +193,25 @@ impl super::View for ScoreBoardApp {
 impl ScoreBoardApp {
     fn table_ui(&mut self, ui: &mut egui::Ui) {
         use egui_extras::{Column, TableBuilder};
-        log::debug!("Table UI");
 
         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
+        let mut scores: Option<Vec<Score>> = None;
+        if let Some(promise) = &self.promise {
+            if let Some(result) = promise.ready() {
+                match result {
+                    Ok(resource) => {
+                        scores = Some(resource.scores.clone());
+                    }
+                    Err(error) => {
+                        log::error!("Failed to fetch scores: {}", error);
+                    }
+                }
+            }
+        }
 
         let mut table = TableBuilder::new(ui)
+            .striped(true)
+            .resizable(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::auto())
             .column(Column::auto())
@@ -200,33 +239,32 @@ impl ScoreBoardApp {
                 });
             })
             .body(|mut body| {
-                // let scores = SCORES.lock().unwrap();
-                // let scores = scores.get(&self.challenge).unwrap();
+                if let Some(scores) = scores {
+                    for (i, score) in scores.iter().enumerate() {
+                        let time = NiceTime::new(score.time_ns);
+                        let name = score.name.clone();
+                        let language = score.language.clone();
+                        let binary = score.command.clone();
 
-                // for (i, score) in scores.iter().enumerate() {
-                //     let time = NiceTime::new(score.time_ns);
-                //     let name = score.name.clone();
-                //     let language = score.language.clone();
-                //     let binary = score.command.clone();
-
-                //     body.row(text_height, |mut row| {
-                //         row.col(|ui| {
-                //             ui.label(i.to_string());
-                //         });
-                //         row.col(|ui| {
-                //             ui.label(time.to_string());
-                //         });
-                //         row.col(|ui| {
-                //             ui.label(name);
-                //         });
-                //         row.col(|ui| {
-                //             ui.label(language);
-                //         });
-                //         row.col(|ui| {
-                //             ui.label(binary);
-                //         });
-                //     });
-                // }
+                        body.row(text_height, |mut row| {
+                            row.col(|ui| {
+                                ui.label(i.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.label(time.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.label(name);
+                            });
+                            row.col(|ui| {
+                                ui.label(language);
+                            });
+                            row.col(|ui| {
+                                ui.label(binary);
+                            });
+                        });
+                    }
+                }
             });
     }
 }
