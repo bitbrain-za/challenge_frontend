@@ -1,15 +1,10 @@
-use lazy_static::lazy_static;
+use poll_promise::Promise;
 use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::{NiceTime, Score, ScoreBoard};
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Mutex;
 use std::time::Duration;
-use tokio::runtime::{EnterGuard, Runtime};
-
-lazy_static! {
-    static ref SCORES: Mutex<HashMap<Challenges, Vec<Score>>> = Mutex::new(HashMap::new());
-}
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -26,6 +21,27 @@ enum Challenges {
     C2333,
 }
 
+struct Resource {
+    response: ehttp::Response,
+    scores: Option<String>,
+}
+
+impl Resource {
+    fn from_response(ctx: &egui::Context, response: ehttp::Response) -> Self {
+        let content_type = response.content_type().unwrap_or_default();
+        let text = response.text();
+        let text = text.map(|text| text.to_owned());
+
+        log::debug!("Content-Type: {}", content_type);
+        log::debug!("Text: {}", text.as_ref().map_or("None", String::as_str));
+
+        Self {
+            response,
+            scores: text,
+        }
+    }
+}
+
 impl Challenges {
     fn next(&self) -> Self {
         match self {
@@ -39,58 +55,49 @@ impl Challenges {
 impl Display for Challenges {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Challenges::C2331 => write!(f, "2331"),
-            Challenges::C2332 => write!(f, "2332"),
-            Challenges::C2333 => write!(f, "2333"),
+            Challenges::C2331 => write!(f, "23_3_1"),
+            Challenges::C2332 => write!(f, "23_3_2"),
+            Challenges::C2333 => write!(f, "23_3_3"),
         }
     }
 }
 
-#[derive(Clone, serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct ScoreBoardApp {
     challenge: Challenges,
     filter: FilterOption,
     sort_column: String,
+
+    #[serde(skip)]
+    promise: Option<Promise<ehttp::Result<Resource>>>,
+    #[serde(skip)]
+    url: String,
 }
 
 impl Default for ScoreBoardApp {
     fn default() -> Self {
-        Self::start();
         Self {
             challenge: Challenges::default(),
             filter: FilterOption::All,
             sort_column: "time_ns".to_string(),
+            promise: Default::default(),
+            url: "http://127.0.0.1:3000/scores/".to_string(),
         }
     }
 }
 
 impl ScoreBoardApp {
-    pub fn start() {
-        let rt = Runtime::new().expect("Unable to create Runtime");
-        let _ = rt.enter();
-
-        let mut challenge = Challenges::C2331;
-        std::thread::spawn(move || {
-            rt.block_on(async {
-                loop {
-                    if false {
-                        tokio::time::sleep(Duration::from_secs(10)).await;
-                    } else {
-                        let url = format!("http://127.0.0.1:3000/scores/{}", &challenge);
-                        let body = reqwest::get(url)
-                            .await
-                            .expect("Error doing GET")
-                            .json::<Vec<Score>>()
-                            .await
-                            .expect("Error parsing");
-
-                        let mut scores = SCORES.lock().unwrap();
-                        scores.insert(challenge.clone(), body.clone());
-                        challenge = challenge.next();
-                    }
-                }
-            })
+    fn fetch(&mut self, ctx: &egui::Context) {
+        let url = format!("{}{}", self.url, self.challenge);
+        let ctx = ctx.clone();
+        let (sender, promise) = Promise::new();
+        let request = ehttp::Request::get(url);
+        ehttp::fetch(request, move |response| {
+            ctx.request_repaint(); // wake up UI thread
+            let resource = response.map(|response| Resource::from_response(&ctx, response));
+            sender.send(resource);
         });
+        self.promise = Some(promise);
     }
 }
 
@@ -100,6 +107,7 @@ impl super::App for ScoreBoardApp {
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
+        self.fetch(ctx);
         egui::Window::new(self.name())
             .open(open)
             .default_width(400.0)
@@ -167,6 +175,7 @@ impl ScoreBoardApp {
         let mut table = TableBuilder::new(ui)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::auto())
+            .column(Column::auto())
             .column(Column::initial(100.0).range(40.0..=300.0))
             .column(Column::initial(100.0).at_least(40.0).clip(true))
             .column(Column::remainder())
@@ -191,33 +200,33 @@ impl ScoreBoardApp {
                 });
             })
             .body(|mut body| {
-                let scores = SCORES.lock().unwrap();
-                let scores = scores.get(&self.challenge).unwrap();
+                // let scores = SCORES.lock().unwrap();
+                // let scores = scores.get(&self.challenge).unwrap();
 
-                for (i, score) in scores.iter().enumerate() {
-                    let time = NiceTime::new(score.time_ns);
-                    let name = score.name.clone();
-                    let language = score.language.clone();
-                    let binary = score.command.clone();
+                // for (i, score) in scores.iter().enumerate() {
+                //     let time = NiceTime::new(score.time_ns);
+                //     let name = score.name.clone();
+                //     let language = score.language.clone();
+                //     let binary = score.command.clone();
 
-                    body.row(text_height, |mut row| {
-                        row.col(|ui| {
-                            ui.label(i.to_string());
-                        });
-                        row.col(|ui| {
-                            ui.label(time.to_string());
-                        });
-                        row.col(|ui| {
-                            ui.label(name);
-                        });
-                        row.col(|ui| {
-                            ui.label(language);
-                        });
-                        row.col(|ui| {
-                            ui.label(binary);
-                        });
-                    });
-                }
+                //     body.row(text_height, |mut row| {
+                //         row.col(|ui| {
+                //             ui.label(i.to_string());
+                //         });
+                //         row.col(|ui| {
+                //             ui.label(time.to_string());
+                //         });
+                //         row.col(|ui| {
+                //             ui.label(name);
+                //         });
+                //         row.col(|ui| {
+                //             ui.label(language);
+                //         });
+                //         row.col(|ui| {
+                //             ui.label(binary);
+                //         });
+                //     });
+                // }
             });
     }
 }
