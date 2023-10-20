@@ -1,11 +1,9 @@
 use poll_promise::Promise;
 use scoreboard_db::Builder as FilterBuilder;
-use scoreboard_db::{NiceTime, Score, ScoreBoard};
-use serde_json;
-use std::collections::HashMap;
+use scoreboard_db::Filter as ScoreBoardFilter;
+use scoreboard_db::{NiceTime, Score, ScoreBoard, SortColumn};
 use std::fmt::{self, Display, Formatter};
-use std::sync::Mutex;
-use std::time::Duration;
+use std::str::FromStr;
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -23,23 +21,26 @@ enum Challenges {
 }
 
 struct Resource {
-    response: ehttp::Response,
+    _response: ehttp::Response,
     scores: Vec<Score>,
 }
 
 impl Resource {
-    fn from_response(ctx: &egui::Context, response: ehttp::Response) -> Self {
-        let content_type = response.content_type().unwrap_or_default();
+    fn from_response(_: &egui::Context, response: ehttp::Response) -> Self {
+        let _ = response.content_type().unwrap_or_default();
         let text = response.text();
         let text = text.map(|text| text.to_owned());
         let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
 
-        Self { response, scores }
+        Self {
+            _response: response,
+            scores,
+        }
     }
 }
 
 impl Challenges {
-    fn next(&self) -> Self {
+    fn _next(&self) -> Self {
         match self {
             Challenges::C2331 => Challenges::C2332,
             Challenges::C2332 => Challenges::C2333,
@@ -81,14 +82,14 @@ impl Default for ScoreBoardApp {
         Self {
             challenge: Challenges::default(),
             filter: FilterOption::All,
-            sort_column: "time_ns".to_string(),
+            sort_column: "time".to_string(),
             promise: Default::default(),
             url: "http://127.0.0.1:3000/scores/".to_string(),
             refresh: true,
 
             active_challenge: Challenges::default(),
             active_filter: FilterOption::All,
-            active_sort_column: "time_ns".to_string(),
+            active_sort_column: "time".to_string(),
         }
     }
 }
@@ -151,9 +152,9 @@ impl super::View for ScoreBoardApp {
                 .show_ui(ui, |ui| {
                     ui.style_mut().wrap = Some(false);
                     ui.set_min_width(60.0);
-                    ui.selectable_value(&mut self.challenge, Challenges::C2331, "2331");
-                    ui.selectable_value(&mut self.challenge, Challenges::C2332, "2332");
-                    ui.selectable_value(&mut self.challenge, Challenges::C2333, "2333");
+                    ui.selectable_value(&mut self.challenge, Challenges::C2331, "23_3_1");
+                    ui.selectable_value(&mut self.challenge, Challenges::C2332, "23_3_2");
+                    ui.selectable_value(&mut self.challenge, Challenges::C2333, "23_3_3");
                 });
 
             ui.label("Filter:");
@@ -172,7 +173,6 @@ impl super::View for ScoreBoardApp {
 
         ui.separator();
 
-        // Leave room for the source code link after the table demo:
         use egui_extras::{Size, StripBuilder};
         StripBuilder::new(ui)
             .size(Size::remainder().at_least(100.0)) // for the table
@@ -182,9 +182,6 @@ impl super::View for ScoreBoardApp {
                     egui::ScrollArea::horizontal().show(ui, |ui| {
                         self.table_ui(ui);
                     });
-                });
-                strip.cell(|ui| {
-                    ui.vertical_centered(|ui| {});
                 });
             });
     }
@@ -209,7 +206,7 @@ impl ScoreBoardApp {
             }
         }
 
-        let mut table = TableBuilder::new(ui)
+        let table = TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
@@ -240,6 +237,22 @@ impl ScoreBoardApp {
             })
             .body(|mut body| {
                 if let Some(scores) = scores {
+                    let mut filters = FilterBuilder::new();
+                    match self.filter {
+                        FilterOption::All => {}
+                        FilterOption::UniquePlayers => {
+                            filters.append(ScoreBoardFilter::UniquePlayers);
+                        }
+                        FilterOption::UniqueLanguage => {
+                            filters.append(ScoreBoardFilter::UniquePlayers);
+                        }
+                    };
+
+                    filters.append(ScoreBoardFilter::Sort(
+                        SortColumn::from_str(self.sort_column.as_str()).expect("Invalid Cloumn"),
+                    ));
+                    let scores = ScoreBoard::new(scores.clone()).filter(filters).scores();
+
                     for (i, score) in scores.iter().enumerate() {
                         let time = NiceTime::new(score.time_ns);
                         let name = score.name.clone();
