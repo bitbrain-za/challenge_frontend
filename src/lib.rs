@@ -4,3 +4,4 @@ mod wrap_app;
 pub use wrap_app::CodeChallengeApp;
 
 pub mod apps;
+pub mod helpers;

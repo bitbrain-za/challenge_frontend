@@ -1,7 +1,9 @@
 pub mod app_windows;
 mod scoreboard_app;
 pub use scoreboard_app::ScoreBoardApp;
+mod challenge_info;
 pub mod code_editor;
+pub use challenge_info::ChallengeInfoApp;
 
 /// Something to view in the demo windows
 pub trait View {

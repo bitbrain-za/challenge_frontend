@@ -18,6 +18,7 @@ impl Default for Apps {
     fn default() -> Self {
         Self::from_apps(vec![
             Box::<super::scoreboard_app::ScoreBoardApp>::default(),
+            Box::<super::challenge_info::ChallengeInfoApp>::default(),
             // Box::<super::code_editor::CodeEditor>::default(),
         ])
     }
