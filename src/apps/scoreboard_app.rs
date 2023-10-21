@@ -1,8 +1,8 @@
+use crate::helpers::Challenges;
 use poll_promise::Promise;
 use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::Filter as ScoreBoardFilter;
 use scoreboard_db::{NiceTime, Score, ScoreBoard, SortColumn};
-use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
@@ -10,14 +10,6 @@ enum FilterOption {
     All,
     UniquePlayers,
     UniqueLanguage,
-}
-
-#[derive(Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize)]
-enum Challenges {
-    #[default]
-    C2331,
-    C2332,
-    C2333,
 }
 
 struct Resource {
@@ -35,26 +27,6 @@ impl Resource {
         Self {
             _response: response,
             scores,
-        }
-    }
-}
-
-impl Challenges {
-    fn _next(&self) -> Self {
-        match self {
-            Challenges::C2331 => Challenges::C2332,
-            Challenges::C2332 => Challenges::C2333,
-            Challenges::C2333 => Challenges::C2331,
-        }
-    }
-}
-
-impl Display for Challenges {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Challenges::C2331 => write!(f, "23_3_1"),
-            Challenges::C2332 => write!(f, "23_3_2"),
-            Challenges::C2333 => write!(f, "23_3_3"),
         }
     }
 }
@@ -163,9 +135,14 @@ impl super::View for ScoreBoardApp {
                         .show_ui(ui, |ui| {
                             ui.style_mut().wrap = Some(false);
                             ui.set_min_width(60.0);
-                            ui.selectable_value(&mut self.challenge, Challenges::C2331, "23_3_1");
-                            ui.selectable_value(&mut self.challenge, Challenges::C2332, "23_3_2");
-                            ui.selectable_value(&mut self.challenge, Challenges::C2333, "23_3_3");
+
+                            for challenge in Challenges::iter() {
+                                ui.selectable_value(
+                                    &mut self.challenge,
+                                    challenge,
+                                    format!("{}", challenge),
+                                );
+                            }
                         });
 
                     ui.separator();
