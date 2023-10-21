@@ -85,7 +85,7 @@ impl super::App for ChallengeInfoApp {
         self.fetch(ctx);
         egui::Window::new(self.name())
             .open(open)
-            .default_width(400.0)
+            .default_width(800.0)
             .default_height(600.0)
             .vscroll(false)
             .hscroll(false)

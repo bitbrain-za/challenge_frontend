@@ -2,6 +2,7 @@
 
 [![dependency status](https://deps.rs/repo/github/bitbrain-za/challenge_frontend/status.svg)](https://deps.rs/repo/github/bitbrain-za/challenge_frontend)
 [![Build Status](https://github.com/bitbrain-za/challenge_frontend/workflows/CI/badge.svg)](https://github.com/bitbrain-za/challenge_frontend/actions?workflow=CI)
+[test deployment](https://bitbrain-za.github.io/challenge_frontend/)
 
 This is the frontend for an in house game.
 

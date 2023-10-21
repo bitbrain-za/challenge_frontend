@@ -1,29 +1,24 @@
-// ----------------------------------------------------------------------------
+use crate::helpers::Languages;
 
 #[derive(PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct CodeEditor {
-    language: String,
+    language: Languages,
     code: String,
 }
 
 impl Default for CodeEditor {
     fn default() -> Self {
         Self {
-            language: "rs".into(),
-            code: "// A very simple example\n\
-fn main() {\n\
-\tprintln!(\"Hello world!\");\n\
-}\n\
-"
-            .into(),
+            language: Languages::Python,
+            code: "#A very simple example\nprint(\"Hello world!\")".into(),
         }
     }
 }
 
 impl super::App for CodeEditor {
     fn name(&self) -> &'static str {
-        "🖮 Code Editor"
+        "💻 Code Editor"
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
@@ -41,31 +36,15 @@ impl super::View for CodeEditor {
 
         ui.horizontal(|ui| {
             ui.set_height(0.0);
-            ui.label("An example of syntax highlighting in a TextEdit.");
-            // ui.add(crate::egui_github_link_file!());
         });
 
-        if cfg!(feature = "syntect") {
-            ui.horizontal(|ui| {
-                ui.label("Language:");
-                ui.text_edit_singleline(language);
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("Syntax highlighting powered by ");
-                ui.hyperlink_to("syntect", "https://github.com/trishume/syntect");
-                ui.label(".");
-            });
-        } else {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("Compile the demo with the ");
-                ui.code("syntax_highlighting");
-                ui.label(" feature to enable more accurate syntax highlighting using ");
-                ui.hyperlink_to("syntect", "https://github.com/trishume/syntect");
-                ui.label(".");
-            });
-        }
+        ui.horizontal(|ui| {
+            ui.label("Language:");
+
+            for l in Languages::iter() {
+                ui.selectable_value(language, l, format!("{}", l));
+            }
+        });
 
         let mut theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
         ui.collapsing("Theme", |ui| {
@@ -76,8 +55,12 @@ impl super::View for CodeEditor {
         });
 
         let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-            let mut layout_job =
-                egui_extras::syntax_highlighting::highlight(ui.ctx(), &theme, string, language);
+            let mut layout_job = egui_extras::syntax_highlighting::highlight(
+                ui.ctx(),
+                &theme,
+                string,
+                &language.to_string(),
+            );
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
         };
