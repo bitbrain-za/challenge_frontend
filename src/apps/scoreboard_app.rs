@@ -56,8 +56,8 @@ impl Default for ScoreBoardApp {
             filter: FilterOption::All,
             sort_column: "time".to_string(),
             promise: Default::default(),
-            url: option_env!("SERVER")
-                .unwrap_or("http://127.0.0.1:3000/")
+            url: option_env!("BACKEND_URL")
+                .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
             refresh: true,
 
