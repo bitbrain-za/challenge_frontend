@@ -84,7 +84,9 @@ impl Default for ScoreBoardApp {
             filter: FilterOption::All,
             sort_column: "time".to_string(),
             promise: Default::default(),
-            url: "http://127.0.0.1:3000/scores/".to_string(),
+            url: option_env!("SERVER")
+                .unwrap_or("http://127.0.0.1:3000/")
+                .to_string(),
             refresh: true,
 
             active_challenge: Challenges::default(),
@@ -99,7 +101,7 @@ impl ScoreBoardApp {
         if !self.refresh {
             return;
         }
-        let url = format!("{}{}", self.url, self.challenge);
+        let url = format!("{}scores/{}", self.url, self.challenge);
         let ctx = ctx.clone();
         let (sender, promise) = Promise::new();
         let request = ehttp::Request::get(url);
@@ -135,6 +137,12 @@ impl super::App for ScoreBoardApp {
         egui::Window::new(self.name())
             .open(open)
             .default_width(400.0)
+            .default_height(600.0)
+            .vscroll(false)
+            .hscroll(false)
+            .resizable(true)
+            .constrain(true)
+            .collapsible(true)
             .show(ctx, |ui| {
                 use super::View as _;
                 self.ui(ui);
@@ -146,44 +154,46 @@ impl super::View for ScoreBoardApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
         self.check_for_reload();
 
-        ui.vertical(|ui| {
-            egui::ComboBox::from_label("Challenge")
-                .selected_text(format!("{}", self.challenge))
-                .show_ui(ui, |ui| {
-                    ui.style_mut().wrap = Some(false);
-                    ui.set_min_width(60.0);
-                    ui.selectable_value(&mut self.challenge, Challenges::C2331, "23_3_1");
-                    ui.selectable_value(&mut self.challenge, Challenges::C2332, "23_3_2");
-                    ui.selectable_value(&mut self.challenge, Challenges::C2333, "23_3_3");
-                });
+        egui::SidePanel::right("Options")
+            .resizable(false)
+            .show_inside(ui, |ui| {
+                ui.vertical(|ui| {
+                    egui::ComboBox::from_label("Challenge")
+                        .selected_text(format!("{}", self.challenge))
+                        .show_ui(ui, |ui| {
+                            ui.style_mut().wrap = Some(false);
+                            ui.set_min_width(60.0);
+                            ui.selectable_value(&mut self.challenge, Challenges::C2331, "23_3_1");
+                            ui.selectable_value(&mut self.challenge, Challenges::C2332, "23_3_2");
+                            ui.selectable_value(&mut self.challenge, Challenges::C2333, "23_3_3");
+                        });
 
-            ui.label("Filter:");
-            ui.radio_value(&mut self.filter, FilterOption::All, "All");
-            ui.radio_value(
-                &mut self.filter,
-                FilterOption::UniquePlayers,
-                "Unique Players",
-            );
-            ui.radio_value(
-                &mut self.filter,
-                FilterOption::UniqueLanguage,
-                "Unique Langauges",
-            );
-        });
-
-        ui.separator();
-
-        use egui_extras::{Size, StripBuilder};
-        StripBuilder::new(ui)
-            .size(Size::remainder().at_least(100.0)) // for the table
-            .size(Size::exact(10.5)) // for the source code link
-            .vertical(|mut strip| {
-                strip.cell(|ui| {
-                    egui::ScrollArea::horizontal().show(ui, |ui| {
-                        self.table_ui(ui);
-                    });
+                    ui.separator();
+                    ui.label("Filter:");
+                    ui.radio_value(&mut self.filter, FilterOption::All, "All");
+                    ui.radio_value(
+                        &mut self.filter,
+                        FilterOption::UniquePlayers,
+                        "Unique Players",
+                    );
+                    ui.radio_value(
+                        &mut self.filter,
+                        FilterOption::UniqueLanguage,
+                        "Unique Langauges",
+                    );
+                    ui.separator();
+                    if ui.button("Refresh").clicked() {
+                        self.refresh = true;
+                    }
                 });
             });
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    self.table_ui(ui);
+                });
+        });
     }
 }
 
