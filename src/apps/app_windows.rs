@@ -35,6 +35,7 @@ impl Apps {
         Self { apps, open }
     }
 
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     pub fn checkboxes(&mut self, ui: &mut Ui) {
         let Self { apps, open } = self;
         ui.label(format!("{} apps", apps.len()));
@@ -45,6 +46,7 @@ impl Apps {
         }
     }
 
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     pub fn windows(&mut self, ctx: &Context) {
         let Self { apps, open } = self;
         for app in apps {
@@ -85,11 +87,12 @@ impl Default for AppWindows {
 }
 
 impl AppWindows {
-    /// Show the app ui (menu bar and windows).
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     pub fn ui(&mut self, ctx: &Context) {
         self.desktop_ui(ctx);
     }
 
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     fn desktop_ui(&mut self, ctx: &Context) {
         egui::SidePanel::right("egui_app_panel")
             .resizable(false)
@@ -115,11 +118,12 @@ impl AppWindows {
         self.show_windows(ctx);
     }
 
-    /// Show the open windows.
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     fn show_windows(&mut self, ctx: &Context) {
         self.apps.windows(ctx);
     }
 
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     fn app_list_ui(&mut self, ui: &mut egui::Ui) {
         ScrollArea::vertical().show(ui, |ui| {
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
