@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "challenge_frontend"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "eframe",
  "egui",
@@ -2033,7 +2033,9 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "scoreboard_db"
-version = "0.2.0"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2f80e8c9842b055f523be607c5d78336a59bebda4e19f6aa1a06affe671e53a"
 dependencies = [
  "log",
  "serde",

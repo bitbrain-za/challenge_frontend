@@ -1,6 +1,6 @@
 [package]
 name = "challenge_frontend"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.71"
 
@@ -15,7 +15,7 @@ eframe = { version = "0.23.0", default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
 log = "0.4"
-scoreboard_db = { path = "../workspace/scoreboard_db" }
+scoreboard_db = "0.2.1"
 ehttp = "0.3.1"
 poll-promise = { version = "0.3", default-features = false }
 serde_json = "1.0"
