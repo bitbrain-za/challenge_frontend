@@ -1,9 +1,8 @@
 use std::collections::BTreeSet;
 
-use egui::{Context, Modifiers, ScrollArea, Ui};
+use egui::{Context, ScrollArea, Ui};
 
 use super::App;
-use super::View;
 
 // ----------------------------------------------------------------------------
 
