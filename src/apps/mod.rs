@@ -4,6 +4,8 @@ pub use scoreboard_app::ScoreBoardApp;
 mod challenge_info;
 pub mod code_editor;
 pub use challenge_info::ChallengeInfoApp;
+pub mod login_app;
+pub use login_app::LoginApp;
 
 /// Something to view in the demo windows
 pub trait View {
