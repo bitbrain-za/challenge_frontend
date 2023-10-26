@@ -25,6 +25,39 @@ pub enum SubmissionResult {
     },
 }
 
+struct SubmissionResponse {
+    _response: ehttp::Response,
+    result: SubmissionResult,
+}
+
+impl SubmissionResponse {
+    fn from_response(_: &egui::Context, response: ehttp::Response) -> Self {
+        let _ = response.content_type().unwrap_or_default();
+        let text = response.text();
+        let text = text.map(|text| text.to_owned());
+        log::debug!("Response: {:?}", text);
+
+        match response.status {
+            200 => {}
+            _ => {
+                log::error!("Response: {:?}", text);
+                return Self {
+                    _response: response,
+                    result: SubmissionResult::Failure {
+                        message: "Failed to login".to_string(),
+                    },
+                };
+            }
+        }
+        let result: SubmissionResult = serde_json::from_str(text.as_ref().unwrap()).unwrap();
+
+        Self {
+            _response: response,
+            result,
+        }
+    }
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct LoginApp {
@@ -32,6 +65,8 @@ pub struct LoginApp {
     username: String,
     token: Option<String>,
     submit: Option<AuthRequest>,
+    #[serde(skip)]
+    promise: Option<Promise<ehttp::Result<SubmissionResponse>>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
@@ -42,6 +77,7 @@ impl Default for LoginApp {
     fn default() -> Self {
         Self {
             logged_in: false,
+            promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/api/auth")
                 .to_string(),
@@ -57,25 +93,25 @@ impl Default for LoginApp {
 }
 
 impl LoginApp {
-    // fn submit_login(&mut self, ctx: &egui::Context) {
-    //     let submission = self.login.clone();
+    fn submit_login(&mut self, ctx: &egui::Context) {
+        let submission = self.login.clone();
 
-    //     let url = format!("{}api/auth/login/", self.url);
-    //     log::debug!("Sending to {}", url);
-    //     let ctx = ctx.clone();
-    //     let (sender, promise) = Promise::new();
+        let url = format!("{}api/auth/login/", self.url);
+        log::debug!("Sending to {}", url);
+        let ctx = ctx.clone();
+        let (sender, promise) = Promise::new();
 
-    //     let submission = serde_json::to_string(&submission).unwrap();
-    //     let request = ehttp::Request::post(url, submission.as_bytes().to_vec());
-    //     ehttp::fetch(request, move |response| {
-    //         ctx.request_repaint(); // wake up UI thread
-    //         let resource =
-    //             response.map(|response| SubmissionResponse::from_response(&ctx, response));
-    //         sender.send(resource);
-    //     });
-    //     self.promise = Some(promise);
-    //     self.submit = None;
-    // }
+        let submission = serde_json::to_string(&submission).unwrap();
+        let request = ehttp::Request::post(url, submission.as_bytes().to_vec());
+        ehttp::fetch(request, move |response| {
+            ctx.request_repaint(); // wake up UI thread
+            let resource =
+                response.map(|response| SubmissionResponse::from_response(&ctx, response));
+            sender.send(resource);
+        });
+        self.promise = Some(promise);
+        self.submit = None;
+    }
 }
 
 impl super::App for LoginApp {
@@ -88,8 +124,7 @@ impl super::App for LoginApp {
             match s {
                 AuthRequest::Login => {
                     log::debug!("Submitting login request");
-                    // self.submit_login(ctx);
-                    self.logged_in = true;
+                    self.submit_login(ctx);
                 }
                 AuthRequest::Logout => {
                     log::debug!("Submitting logout request");
@@ -140,29 +175,29 @@ impl super::View for LoginApp {
             });
             ui.separator();
             ui.vertical(|ui| {
-                // if let Some(promise) = &self.promise {
-                //     if let Some(result) = promise.ready() {
-                //         match result {
-                //             Ok(submission_response) => match &submission_response.result {
-                //                 SubmissionResult::Success {
-                //                     status,
-                //                     access_token,
-                //                 } => {
-                //                     ui.label(format!("status: {}", status));
-                //                     ui.label(format!("token: {}", access_token));
-                //                 }
-                //                 SubmissionResult::Failure { message } => {
-                //                     ui.label(format!("Message: {}", message));
-                //                 }
-                //             },
-                //             Err(error) => {
-                //                 log::error!("Failed to fetch scores: {}", error);
-                //             }
-                //         }
-                //     } else {
-                //         ui.label("Running...");
-                //     }
-                // }
+                if let Some(promise) = &self.promise {
+                    if let Some(result) = promise.ready() {
+                        match result {
+                            Ok(submission_response) => match &submission_response.result {
+                                SubmissionResult::Success {
+                                    status,
+                                    access_token,
+                                } => {
+                                    ui.label(format!("status: {}", status));
+                                    ui.label(format!("token: {}", access_token));
+                                }
+                                SubmissionResult::Failure { message } => {
+                                    ui.label(format!("Message: {}", message));
+                                }
+                            },
+                            Err(error) => {
+                                log::error!("Failed to fetch scores: {}", error);
+                            }
+                        }
+                    } else {
+                        ui.label("Running...");
+                    }
+                }
             });
         });
     }

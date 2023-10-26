@@ -12,6 +12,25 @@ enum FilterOption {
     UniqueLanguage,
 }
 
+struct Resource {
+    _response: ehttp::Response,
+    scores: Vec<Score>,
+}
+
+impl Resource {
+    fn from_response(_: &egui::Context, response: ehttp::Response) -> Self {
+        let _ = response.content_type().unwrap_or_default();
+        let text = response.text();
+        let text = text.map(|text| text.to_owned());
+        let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
+
+        Self {
+            _response: response,
+            scores,
+        }
+    }
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ScoreBoardApp {
     challenge: Challenges,
@@ -23,7 +42,7 @@ pub struct ScoreBoardApp {
     active_sort_column: String,
 
     #[serde(skip)]
-    scores: Option<Vec<Score>>,
+    promise: Option<Promise<ehttp::Result<Resource>>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
@@ -36,6 +55,7 @@ impl Default for ScoreBoardApp {
             challenge: Challenges::default(),
             filter: FilterOption::All,
             sort_column: "time".to_string(),
+            promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
@@ -44,35 +64,29 @@ impl Default for ScoreBoardApp {
             active_challenge: Challenges::default(),
             active_filter: FilterOption::All,
             active_sort_column: "time".to_string(),
-            scores: None,
         }
     }
 }
 
 impl ScoreBoardApp {
-    async fn async_fetch(&mut self) -> Result<(), String> {
-        let url = format!("{}api/game/scores/{}", self.url, self.challenge);
-        let response = match reqwasm::http::Request::get(&url).send().await {
-            Ok(res) => res,
-            Err(_) => return Err("Failed to make request".to_string()),
-        };
-
-        if response.status() != 200 {
-            log::error!("Error Response: {:?}", response.text().await);
-            return Err(format!("API error: {}", response.status()));
+    fn fetch(&mut self, ctx: &egui::Context) {
+        if !self.refresh {
+            return;
         }
-
-        let res_json = response.json::<Vec<Score>>().await;
-        match res_json {
-            Ok(data) => {
-                self.scores = Some(data);
-                Ok(())
-            }
-            Err(_) => Err("Failed to parse response".to_string()),
-        }
+        let url = format!("{}scores/{}", self.url, self.challenge);
+        let ctx = ctx.clone();
+        let (sender, promise) = Promise::new();
+        let request = ehttp::Request::get(url);
+        ehttp::fetch(request, move |response| {
+            ctx.request_repaint(); // wake up UI thread
+            let resource = response.map(|response| Resource::from_response(&ctx, response));
+            sender.send(resource);
+        });
+        self.promise = Some(promise);
+        self.refresh = false;
     }
 
-    async fn check_for_reload(&mut self) {
+    fn check_for_reload(&mut self) {
         if self.active_challenge != self.challenge
             || self.active_filter != self.filter
             || self.active_sort_column != self.sort_column
@@ -80,7 +94,7 @@ impl ScoreBoardApp {
             self.active_challenge = self.challenge;
             self.active_filter = self.filter;
             self.active_sort_column = self.sort_column.clone();
-            let _ = self.async_fetch().await;
+            self.refresh = true;
         }
     }
 }
@@ -91,6 +105,7 @@ impl super::App for ScoreBoardApp {
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
+        self.fetch(ctx);
         egui::Window::new(self.name())
             .open(open)
             .default_width(400.0)
@@ -164,6 +179,19 @@ impl ScoreBoardApp {
         use egui_extras::{Column, TableBuilder};
 
         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
+        let mut scores: Option<Vec<Score>> = None;
+        if let Some(promise) = &self.promise {
+            if let Some(result) = promise.ready() {
+                match result {
+                    Ok(resource) => {
+                        scores = Some(resource.scores.clone());
+                    }
+                    Err(error) => {
+                        log::error!("Failed to fetch scores: {}", error);
+                    }
+                }
+            }
+        }
 
         let table = TableBuilder::new(ui)
             .striped(true)
@@ -195,7 +223,7 @@ impl ScoreBoardApp {
                 });
             })
             .body(|mut body| {
-                if let Some(scores) = self.scores {
+                if let Some(scores) = scores {
                     let mut filters = FilterBuilder::new();
                     match self.filter {
                         FilterOption::All => {}
