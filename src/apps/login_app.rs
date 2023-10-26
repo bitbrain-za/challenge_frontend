@@ -36,6 +36,19 @@ impl SubmissionResponse {
         let text = response.text();
         let text = text.map(|text| text.to_owned());
         log::debug!("Response: {:?}", text);
+
+        match response.status {
+            200 => {}
+            _ => {
+                log::error!("Response: {:?}", text);
+                return Self {
+                    _response: response,
+                    result: SubmissionResult::Failure {
+                        message: "Failed to login".to_string(),
+                    },
+                };
+            }
+        }
         let result: SubmissionResult = serde_json::from_str(text.as_ref().unwrap()).unwrap();
 
         Self {
@@ -66,7 +79,7 @@ impl Default for LoginApp {
             logged_in: false,
             promise: Default::default(),
             url: option_env!("BACKEND_URL")
-                .unwrap_or("http://123.4.5.6:3000/api/auth")
+                .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
             login: LoginSchema {
                 email: "".to_string(),
@@ -83,7 +96,7 @@ impl LoginApp {
     fn submit_login(&mut self, ctx: &egui::Context) {
         let submission = self.login.clone();
 
-        let url = format!("{}submit", self.url);
+        let url = format!("{}api/auth/login", self.url);
         log::debug!("Sending to {}", url);
         let ctx = ctx.clone();
         let (sender, promise) = Promise::new();
@@ -111,8 +124,7 @@ impl super::App for LoginApp {
             match s {
                 AuthRequest::Login => {
                     log::debug!("Submitting login request");
-                    // self.submit_login(ctx);
-                    self.logged_in = true;
+                    self.submit_login(ctx);
                 }
                 AuthRequest::Logout => {
                     log::debug!("Submitting logout request");

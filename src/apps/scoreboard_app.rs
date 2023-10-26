@@ -22,6 +22,18 @@ impl Resource {
         let _ = response.content_type().unwrap_or_default();
         let text = response.text();
         let text = text.map(|text| text.to_owned());
+
+        match response.status {
+            200 => {}
+            _ => {
+                log::error!("Response: {:?}", text);
+                return Self {
+                    _response: response,
+                    scores: Vec::new(),
+                };
+            }
+        }
+
         let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
 
         Self {
@@ -73,7 +85,7 @@ impl ScoreBoardApp {
         if !self.refresh {
             return;
         }
-        let url = format!("{}scores/{}", self.url, self.challenge);
+        let url = format!("{}api/game/scores/{}", self.url, self.challenge);
         let ctx = ctx.clone();
         let (sender, promise) = Promise::new();
         let request = ehttp::Request::get(url);
