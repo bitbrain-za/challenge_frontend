@@ -3,26 +3,23 @@ use crate::apps;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct CodeChallengeApp {
-    windows: apps::app_windows::AppWindows,
     #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
+    windows: apps::app_windows::AppWindows,
 }
 
 impl Default for CodeChallengeApp {
     fn default() -> Self {
         Self {
             windows: apps::app_windows::AppWindows::default(),
-            // Example stuff:
-            value: 2.7,
         }
     }
 }
 
 impl CodeChallengeApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        // if let Some(storage) = cc.storage {
-        //     return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        // }
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        if let Some(storage) = cc.storage {
+            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+        }
         Default::default()
     }
 }

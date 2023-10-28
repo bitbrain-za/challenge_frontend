@@ -1,6 +1,7 @@
 use crate::components::password;
 use gloo_net::http;
 use poll_promise::Promise;
+use web_sys::RequestCredentials;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 enum AuthRequest {
@@ -51,8 +52,8 @@ impl Default for LoginApp {
                 .unwrap_or("http://123.4.5.6:3000/api/auth")
                 .to_string(),
             login: LoginSchema {
-                email: "".to_string(),
-                password: "".to_string(),
+                email: "admin@admin.com".to_string(),
+                password: "password123".to_string(),
             },
             token: None,
             username: "".to_string(),
@@ -71,11 +72,21 @@ impl LoginApp {
 
         let promise = Promise::spawn_local(async move {
             let response = http::Request::post(&url)
+                .credentials(RequestCredentials::Include)
                 .json(&submission)
                 .unwrap()
                 .send()
                 .await
                 .unwrap();
+
+            log::debug!("Response: {:?}", response);
+            let headers = response.headers();
+            log::debug!("Headers: {:?}", headers);
+            for (key, value) in headers.entries() {
+                log::debug!("{}: {:?}", key, value);
+            }
+            // let cookies = headers.get("set-cookie").unwrap().to_string();
+            // log::debug!("Cookies: {:?}", cookies);
 
             let result: LoginResponse = response.json().await.unwrap();
             ctx.request_repaint(); // wake up UI thread

@@ -5,6 +5,7 @@ use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::Filter as ScoreBoardFilter;
 use scoreboard_db::{NiceTime, Score, ScoreBoard, SortColumn};
 use std::str::FromStr;
+use web_sys::RequestCredentials;
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -67,7 +68,8 @@ impl ScoreBoardApp {
         let ctx = ctx.clone();
 
         let promise = poll_promise::Promise::spawn_local(async move {
-            let response = http::Request::get(&url).send().await.unwrap();
+            let response = http::Request::get(&url).credentials(RequestCredentials::Include);
+            let response = response.send().await.unwrap();
             let text = response.text().await;
             let text = text.map(|text| text.to_owned());
 
