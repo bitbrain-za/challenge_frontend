@@ -1,4 +1,5 @@
 use crate::helpers::Challenges;
+use gloo_net::http;
 use poll_promise::Promise;
 use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::Filter as ScoreBoardFilter;
@@ -66,7 +67,7 @@ impl ScoreBoardApp {
         let ctx = ctx.clone();
 
         let promise = poll_promise::Promise::spawn_local(async move {
-            let response = reqwasm::http::Request::get(&url).send().await.unwrap();
+            let response = http::Request::get(&url).send().await.unwrap();
             let text = response.text().await;
             let text = text.map(|text| text.to_owned());
 

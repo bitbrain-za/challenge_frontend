@@ -1,5 +1,6 @@
 use crate::components::password;
 use poll_promise::Promise;
+use gloo_net;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 enum AuthRequest {
@@ -15,7 +16,7 @@ struct LoginSchema {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
-pub enum SubmissionResult {
+pub enum LoginResponse {
     Success {
         status: String,
         access_token: String,
@@ -23,11 +24,6 @@ pub enum SubmissionResult {
     Failure {
         message: String,
     },
-}
-
-struct SubmissionResponse {
-    _response: ehttp::Response,
-    result: SubmissionResult,
 }
 
 impl SubmissionResponse {
@@ -66,7 +62,7 @@ pub struct LoginApp {
     token: Option<String>,
     submit: Option<AuthRequest>,
     #[serde(skip)]
-    promise: Option<Promise<ehttp::Result<SubmissionResponse>>>,
+    promise: Option<Promise<LoginResponse>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
@@ -99,6 +95,28 @@ impl LoginApp {
         let url = format!("{}api/auth/login/", self.url);
         log::debug!("Sending to {}", url);
         let ctx = ctx.clone();
+
+        let promise = Promise::spawn_local(async move {
+            let request = reqwasm::http::Request::post(&url);
+
+            let response = reqwasm::http::Request::get(&url).send().await.unwrap();
+            let text = response.text().await;
+            let text = text.map(|text| text.to_owned());
+
+            let result = match response.status() {
+                200 => {
+                    let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
+                    FetchResponse::Success(scores)
+                }
+                _ => {
+                    log::error!("Response: {:?}", text);
+                    FetchResponse::Failure(text.unwrap())
+                }
+            };
+            ctx.request_repaint(); // wake up UI thread
+            result
+        });
+
         let (sender, promise) = Promise::new();
 
         let submission = serde_json::to_string(&submission).unwrap();
