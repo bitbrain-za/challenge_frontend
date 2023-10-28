@@ -16,7 +16,7 @@ struct Apps {
 impl Default for Apps {
     fn default() -> Self {
         Self::from_apps(vec![
-            // Box::<super::login_app::LoginApp>::default(),
+            Box::<super::login_app::LoginApp>::default(),
             Box::<super::scoreboard_app::ScoreBoardApp>::default(),
             // Box::<super::challenge_info::ChallengeInfoApp>::default(),
             // Box::<super::code_editor::CodeEditor>::default(),
@@ -27,7 +27,7 @@ impl Default for Apps {
 impl Apps {
     pub fn from_apps(apps: Vec<Box<dyn App>>) -> Self {
         let mut open = BTreeSet::new();
-        // open.insert(super::login_app::LoginApp::default().name().to_owned());
+        open.insert(super::login_app::LoginApp::default().name().to_owned());
 
         Self { apps, open }
     }

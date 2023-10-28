@@ -1,6 +1,6 @@
 use crate::components::password;
+use gloo_net::http;
 use poll_promise::Promise;
-use gloo_net;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 enum AuthRequest {
@@ -15,43 +15,16 @@ struct LoginSchema {
     password: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum LoginResponse {
     Success {
         status: String,
         access_token: String,
     },
     Failure {
+        status: String,
         message: String,
     },
-}
-
-impl SubmissionResponse {
-    fn from_response(_: &egui::Context, response: ehttp::Response) -> Self {
-        let _ = response.content_type().unwrap_or_default();
-        let text = response.text();
-        let text = text.map(|text| text.to_owned());
-        log::debug!("Response: {:?}", text);
-
-        match response.status {
-            200 => {}
-            _ => {
-                log::error!("Response: {:?}", text);
-                return Self {
-                    _response: response,
-                    result: SubmissionResult::Failure {
-                        message: "Failed to login".to_string(),
-                    },
-                };
-            }
-        }
-        let result: SubmissionResult = serde_json::from_str(text.as_ref().unwrap()).unwrap();
-
-        Self {
-            _response: response,
-            result,
-        }
-    }
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -92,41 +65,24 @@ impl LoginApp {
     fn submit_login(&mut self, ctx: &egui::Context) {
         let submission = self.login.clone();
 
-        let url = format!("{}api/auth/login/", self.url);
+        let url = format!("{}api/auth/login", self.url);
         log::debug!("Sending to {}", url);
         let ctx = ctx.clone();
 
         let promise = Promise::spawn_local(async move {
-            let request = reqwasm::http::Request::post(&url);
+            let response = http::Request::post(&url)
+                .json(&submission)
+                .unwrap()
+                .send()
+                .await
+                .unwrap();
 
-            let response = reqwasm::http::Request::get(&url).send().await.unwrap();
-            let text = response.text().await;
-            let text = text.map(|text| text.to_owned());
-
-            let result = match response.status() {
-                200 => {
-                    let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
-                    FetchResponse::Success(scores)
-                }
-                _ => {
-                    log::error!("Response: {:?}", text);
-                    FetchResponse::Failure(text.unwrap())
-                }
-            };
+            let result: LoginResponse = response.json().await.unwrap();
             ctx.request_repaint(); // wake up UI thread
+            log::info!("Result: {:?}", result);
             result
         });
 
-        let (sender, promise) = Promise::new();
-
-        let submission = serde_json::to_string(&submission).unwrap();
-        let request = ehttp::Request::post(url, submission.as_bytes().to_vec());
-        ehttp::fetch(request, move |response| {
-            ctx.request_repaint(); // wake up UI thread
-            let resource =
-                response.map(|response| SubmissionResponse::from_response(&ctx, response));
-            sender.send(resource);
-        });
         self.promise = Some(promise);
         self.submit = None;
     }
@@ -196,20 +152,16 @@ impl super::View for LoginApp {
                 if let Some(promise) = &self.promise {
                     if let Some(result) = promise.ready() {
                         match result {
-                            Ok(submission_response) => match &submission_response.result {
-                                SubmissionResult::Success {
-                                    status,
-                                    access_token,
-                                } => {
-                                    ui.label(format!("status: {}", status));
-                                    ui.label(format!("token: {}", access_token));
-                                }
-                                SubmissionResult::Failure { message } => {
-                                    ui.label(format!("Message: {}", message));
-                                }
-                            },
-                            Err(error) => {
-                                log::error!("Failed to fetch scores: {}", error);
+                            LoginResponse::Success {
+                                status,
+                                access_token,
+                            } => {
+                                ui.label(format!("status: {}", status));
+                                ui.label(format!("token: {}", access_token));
+                            }
+                            LoginResponse::Failure { status, message } => {
+                                ui.label(format!("status: {}", status));
+                                ui.label(format!("message: {}", message));
                             }
                         }
                     } else {
