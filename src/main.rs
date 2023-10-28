@@ -16,7 +16,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "eframe template",
+        "my app",
         native_options,
         Box::new(|cc| Box::new(challenge_frontend::CodeChallengeApp::new(cc))),
     )

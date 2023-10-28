@@ -12,23 +12,10 @@ enum FilterOption {
     UniqueLanguage,
 }
 
-struct Resource {
-    _response: ehttp::Response,
-    scores: Vec<Score>,
-}
-
-impl Resource {
-    fn from_response(_: &egui::Context, response: ehttp::Response) -> Self {
-        let _ = response.content_type().unwrap_or_default();
-        let text = response.text();
-        let text = text.map(|text| text.to_owned());
-        let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
-
-        Self {
-            _response: response,
-            scores,
-        }
-    }
+#[derive(serde::Deserialize, serde::Serialize)]
+enum FetchResponse {
+    Success(Vec<Score>),
+    Failure(String),
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -42,7 +29,7 @@ pub struct ScoreBoardApp {
     active_sort_column: String,
 
     #[serde(skip)]
-    promise: Option<Promise<ehttp::Result<Resource>>>,
+    promise: Option<Promise<FetchResponse>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
@@ -73,17 +60,30 @@ impl ScoreBoardApp {
         if !self.refresh {
             return;
         }
-        let url = format!("{}scores/{}", self.url, self.challenge);
+        self.refresh = false;
+
+        let url = format!("{}api/game/scores/{}", self.url, self.challenge);
         let ctx = ctx.clone();
-        let (sender, promise) = Promise::new();
-        let request = ehttp::Request::get(url);
-        ehttp::fetch(request, move |response| {
+
+        let promise = poll_promise::Promise::spawn_local(async move {
+            let response = reqwasm::http::Request::get(&url).send().await.unwrap();
+            let text = response.text().await;
+            let text = text.map(|text| text.to_owned());
+
+            let result = match response.status() {
+                200 => {
+                    let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
+                    FetchResponse::Success(scores)
+                }
+                _ => {
+                    log::error!("Response: {:?}", text);
+                    FetchResponse::Failure(text.unwrap())
+                }
+            };
             ctx.request_repaint(); // wake up UI thread
-            let resource = response.map(|response| Resource::from_response(&ctx, response));
-            sender.send(resource);
+            result
         });
         self.promise = Some(promise);
-        self.refresh = false;
     }
 
     fn check_for_reload(&mut self) {
@@ -183,11 +183,11 @@ impl ScoreBoardApp {
         if let Some(promise) = &self.promise {
             if let Some(result) = promise.ready() {
                 match result {
-                    Ok(resource) => {
-                        scores = Some(resource.scores.clone());
+                    FetchResponse::Success(fetched_scores) => {
+                        scores = Some(fetched_scores.clone());
                     }
-                    Err(error) => {
-                        log::error!("Failed to fetch scores: {}", error);
+                    FetchResponse::Failure(message) => {
+                        ui.label(format!("Message: {}", message));
                     }
                 }
             }
