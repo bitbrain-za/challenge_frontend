@@ -1,5 +1,6 @@
 use crate::helpers::Challenges;
 use egui_commonmark::*;
+use gloo_net::http;
 use poll_promise::Promise;
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
@@ -9,29 +10,11 @@ enum FilterOption {
     UniqueLanguage,
 }
 
-struct Resource {
-    _response: ehttp::Response,
-    text: Option<String>,
-}
-
-impl Resource {
-    fn from_response(_: &egui::Context, response: ehttp::Response) -> Self {
-        let _ = response.content_type().unwrap_or_default();
-        let text = response.text();
-        let text = text.map(|text| text.to_owned());
-
-        Self {
-            _response: response,
-            text,
-        }
-    }
-}
-
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ChallengeInfoApp {
     challenge: Challenges,
     #[serde(skip)]
-    promise: Option<Promise<ehttp::Result<Resource>>>,
+    promise: Option<Promise<Result<String, String>>>,
     #[serde(skip)]
     active_challenge: Challenges,
     #[serde(skip)]
@@ -55,17 +38,19 @@ impl ChallengeInfoApp {
         if !self.refresh {
             return;
         }
+        self.refresh = false;
+
         let url = self.challenge.get_info_url();
         let ctx = ctx.clone();
-        let (sender, promise) = Promise::new();
-        let request = ehttp::Request::get(url);
-        ehttp::fetch(request, move |response| {
+
+        let promise = poll_promise::Promise::spawn_local(async move {
+            let response = http::Request::get(&url);
+            let response = response.send().await.unwrap();
+            let text = response.text().await.map_err(|e| format!("{:?}", e));
             ctx.request_repaint(); // wake up UI thread
-            let resource = response.map(|response| Resource::from_response(&ctx, response));
-            sender.send(resource);
+            text
         });
         self.promise = Some(promise);
-        self.refresh = false;
     }
 
     fn check_for_reload(&mut self) {
@@ -123,13 +108,9 @@ impl super::View for ChallengeInfoApp {
                     if let Some(promise) = &self.promise {
                         if let Some(result) = promise.ready() {
                             match result {
-                                Ok(resource) => {
+                                Ok(text) => {
                                     let mut cache = CommonMarkCache::default();
-                                    CommonMarkViewer::new("viewer").show(
-                                        ui,
-                                        &mut cache,
-                                        resource.text.as_ref().unwrap(),
-                                    );
+                                    CommonMarkViewer::new("viewer").show(ui, &mut cache, text);
                                 }
                                 Err(err) => {
                                     ui.label(format!("Error fetching file: {}", err));
