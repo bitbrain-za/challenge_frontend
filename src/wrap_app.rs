@@ -1,20 +1,13 @@
 use crate::apps;
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct CodeChallengeApp {
     #[serde(skip)] // This how you opt-out of serialization of a field
+    logged_in: bool,
+    #[serde(skip)] // This how you opt-out of serialization of a field
     windows: apps::app_windows::AppWindows,
 }
-
-impl Default for CodeChallengeApp {
-    fn default() -> Self {
-        Self {
-            windows: apps::app_windows::AppWindows::default(),
-        }
-    }
-}
-
 impl CodeChallengeApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         if let Some(storage) = cc.storage {

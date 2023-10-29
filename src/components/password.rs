@@ -1,5 +1,5 @@
 #[allow(clippy::ptr_arg)] // false positive
-pub fn password_ui(ui: &mut egui::Ui, password: &mut String) -> egui::Response {
+pub fn password_ui(ui: &mut egui::Ui, password: &mut String, interactive: bool) -> egui::Response {
     // Generate an id for the state
     let state_id = ui.id().with("show_plaintext");
 
@@ -20,10 +20,16 @@ pub fn password_ui(ui: &mut egui::Ui, password: &mut String) -> egui::Response {
             show_plaintext = !show_plaintext;
         }
 
+        if !interactive {
+            show_plaintext = false;
+        }
+
         // Show the password field:
         ui.add_sized(
             ui.available_size(),
-            egui::TextEdit::singleline(password).password(!show_plaintext),
+            egui::TextEdit::singleline(password)
+                .password(!show_plaintext)
+                .interactive(interactive),
         );
     });
 
@@ -42,6 +48,7 @@ pub fn password_ui(ui: &mut egui::Ui, password: &mut String) -> egui::Response {
 /// ``` ignore
 /// ui.add(password(&mut my_password));
 /// ```
-pub fn password(password: &mut String) -> impl egui::Widget + '_ {
-    move |ui: &mut egui::Ui| password_ui(ui, password)
+pub fn password(password: &mut String, interactive: Option<bool>) -> impl egui::Widget + '_ {
+    let interactive = interactive.unwrap_or(true);
+    move |ui: &mut egui::Ui| password_ui(ui, password, interactive)
 }

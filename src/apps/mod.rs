@@ -1,8 +1,8 @@
 pub mod app_windows;
 mod scoreboard_app;
 pub use scoreboard_app::ScoreBoardApp;
-// pub mod code_editor;
 mod challenge_info;
+pub mod code_editor;
 pub use challenge_info::ChallengeInfoApp;
 pub mod login_app;
 pub use login_app::LoginApp;

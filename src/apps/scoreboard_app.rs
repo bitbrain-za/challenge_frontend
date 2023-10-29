@@ -191,6 +191,7 @@ impl ScoreBoardApp {
                     }
                     FetchResponse::Failure(message) => {
                         ui.label(format!("Message: {}", message));
+                        self.active_challenge = Challenges::None;
                     }
                 }
             }

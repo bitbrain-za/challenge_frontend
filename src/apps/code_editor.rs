@@ -1,5 +1,7 @@
 use crate::helpers::{Challenges, Languages};
+use gloo_net::http;
 use poll_promise::Promise;
+use web_sys::RequestCredentials;
 
 #[derive(Clone, PartialEq, serde::Serialize)]
 struct Submission {
@@ -17,26 +19,6 @@ pub enum SubmissionResult {
     Failure { message: String },
 }
 
-struct SubmissionResponse {
-    _response: ehttp::Response,
-    result: SubmissionResult,
-}
-
-impl SubmissionResponse {
-    fn from_response(_: &egui::Context, response: ehttp::Response) -> Self {
-        let _ = response.content_type().unwrap_or_default();
-        let text = response.text();
-        let text = text.map(|text| text.to_owned());
-        log::debug!("Response: {:?}", text);
-        let result: SubmissionResult = serde_json::from_str(text.as_ref().unwrap()).unwrap();
-
-        Self {
-            _response: response,
-            result,
-        }
-    }
-}
-
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct CodeEditor {
@@ -44,7 +26,7 @@ pub struct CodeEditor {
     code: String,
     challenge: Challenges,
     #[serde(skip)]
-    promise: Option<Promise<ehttp::Result<SubmissionResponse>>>,
+    promise: Option<Promise<Result<SubmissionResult, String>>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
@@ -72,22 +54,42 @@ impl CodeEditor {
             return;
         }
         let submission = self.run.clone().unwrap();
+        self.run = None;
 
-        let url = format!("{}submit", self.url);
+        let url = format!("{}api/game/submit", self.url);
         log::debug!("Sending to {}", url);
         let ctx = ctx.clone();
-        let (sender, promise) = Promise::new();
 
-        let submission = serde_json::to_string(&submission).unwrap();
-        let request = ehttp::Request::post(url, submission.as_bytes().to_vec());
-        ehttp::fetch(request, move |response| {
+        let promise = Promise::spawn_local(async move {
+            let response = http::Request::post(&url)
+                .credentials(RequestCredentials::Include)
+                .json(&submission)
+                .unwrap()
+                .send()
+                .await
+                .unwrap();
+
+            match response.status() {
+                200 => (),
+                _ => {
+                    return Err(format!("Failed to submit code: {:?}", response));
+                }
+            }
+
+            log::debug!("Response: {:?}", response);
+            let headers = response.headers();
+            log::debug!("Headers: {:?}", headers);
+            for (key, value) in headers.entries() {
+                log::debug!("{}: {:?}", key, value);
+            }
+            let result: SubmissionResult = response.json().await.unwrap();
+
             ctx.request_repaint(); // wake up UI thread
-            let resource =
-                response.map(|response| SubmissionResponse::from_response(&ctx, response));
-            sender.send(resource);
+            log::info!("Result: {:?}", result);
+            Ok(result)
         });
+
         self.promise = Some(promise);
-        self.run = None;
     }
 
     fn as_test_submission(&self) -> Submission {
@@ -191,7 +193,7 @@ impl super::View for CodeEditor {
                 if let Some(promise) = &self.promise {
                     if let Some(result) = promise.ready() {
                         match result {
-                            Ok(submission_response) => match &submission_response.result {
+                            Ok(submission_response) => match &submission_response {
                                 SubmissionResult::Success { score, message } => {
                                     ui.label(format!("Message: {}", message));
                                     ui.label(format!("Score: {}", score));
