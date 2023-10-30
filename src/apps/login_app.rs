@@ -16,6 +16,19 @@ struct LoginSchema {
     password: String,
 }
 
+#[derive(Clone, PartialEq, serde::Serialize)]
+struct RegisterSchema {
+    name: String,
+    email: String,
+    password: String,
+}
+
+#[derive(Clone, PartialEq, serde::Serialize)]
+struct RegisterResponse {
+    status: String,
+    message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum LoginResponse {
     Success {
@@ -48,6 +61,8 @@ pub struct LoginApp {
     login: LoginSchema,
     #[serde(skip)]
     state: LoginState,
+    #[serde(skip)]
+    register: Option<RegisterSchema>,
 }
 
 impl Default for LoginApp {
@@ -65,6 +80,7 @@ impl Default for LoginApp {
             username: "".to_string(),
             submit: None,
             state: LoginState::LoggedOut,
+            register: None,
         }
     }
 }
@@ -121,6 +137,30 @@ impl LoginApp {
                     Err(text)
                 }
             };
+            ctx.request_repaint(); // wake up UI thread
+            result
+        });
+
+        self.promise = Some(promise);
+        self.submit = None;
+    }
+    fn submit_register(&mut self, ctx: &egui::Context) {
+        if self.register.is_none() {
+            return;
+        }
+        let submission = self.register.clone().unwrap();
+        let url = format!("{}api/auth/register", self.url);
+        let ctx = ctx.clone();
+
+        let promise = Promise::spawn_local(async move {
+            let response = http::Request::post(&url)
+                .json(&submission)
+                .unwrap()
+                .send()
+                .await
+                .unwrap();
+            let result: RegisterResponse = response.json().await.unwrap();
+            log::info!("Result: {:?}", result);
             ctx.request_repaint(); // wake up UI thread
             result
         });
