@@ -23,10 +23,24 @@ struct RegisterSchema {
     password: String,
 }
 
-#[derive(Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct RegisterResponse {
     status: String,
     message: String,
+}
+
+impl RegisterResponse {
+    fn _is_success(&self) -> bool {
+        self.status.to_lowercase() == "success"
+    }
+
+    fn _is_failure(&self) -> bool {
+        !self._is_success()
+    }
+
+    async fn from_response(response: http::Response) -> Self {
+        response.json::<RegisterResponse>().await.unwrap()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -56,6 +70,8 @@ pub struct LoginApp {
     #[serde(skip)]
     promise: Option<Promise<Result<LoginState, String>>>,
     #[serde(skip)]
+    register_promise: Option<Promise<RegisterResponse>>,
+    #[serde(skip)]
     url: String,
     #[serde(skip)]
     login: LoginSchema,
@@ -69,6 +85,7 @@ impl Default for LoginApp {
     fn default() -> Self {
         Self {
             promise: Default::default(),
+            register_promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/api/auth")
                 .to_string(),
@@ -159,13 +176,13 @@ impl LoginApp {
                 .send()
                 .await
                 .unwrap();
-            let result: RegisterResponse = response.json().await.unwrap();
+            let result = RegisterResponse::from_response(response).await;
             log::info!("Result: {:?}", result);
             ctx.request_repaint(); // wake up UI thread
             result
         });
 
-        self.promise = Some(promise);
+        self.register_promise = Some(promise);
         self.submit = None;
     }
 }
@@ -188,8 +205,7 @@ impl super::App for LoginApp {
                 }
                 AuthRequest::Register => {
                     log::debug!("Submitting register request");
-                    todo!();
-                    // self.submit_register(ctx);
+                    self.submit_register(ctx);
                 }
             }
         }
