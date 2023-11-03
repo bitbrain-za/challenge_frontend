@@ -108,6 +108,7 @@ impl super::App for ScoreBoardApp {
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
+        self.check_for_reload();
         self.fetch(ctx);
         egui::Window::new(self.name())
             .open(open)
@@ -127,8 +128,6 @@ impl super::App for ScoreBoardApp {
 
 impl super::View for ScoreBoardApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        self.check_for_reload();
-
         egui::SidePanel::right("Options")
             .resizable(false)
             .show_inside(ui, |ui| {
@@ -191,7 +190,6 @@ impl ScoreBoardApp {
                     }
                     FetchResponse::Failure(message) => {
                         ui.label(format!("Message: {}", message));
-                        self.active_challenge = Challenges::None;
                     }
                 }
             }
