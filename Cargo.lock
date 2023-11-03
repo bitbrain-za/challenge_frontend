@@ -511,10 +511,11 @@ dependencies = [
 
 [[package]]
 name = "challenge_frontend"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "eframe",
  "egui",
+ "egui-notify",
  "egui_commonmark",
  "egui_extras",
  "env_logger",
@@ -810,6 +811,15 @@ dependencies = [
  "nohash-hasher",
  "ron",
  "serde",
+]
+
+[[package]]
+name = "egui-notify"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc3b10f21c7bb2afaecb8d98677cdb233a8b1f336b9b95abd610a33aeced04fc"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

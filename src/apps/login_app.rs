@@ -1,6 +1,8 @@
 use crate::components::password;
+use egui_notify::Toasts;
 use gloo_net::http;
 use poll_promise::Promise;
+use std::time::Duration;
 use web_sys::RequestCredentials;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -30,12 +32,8 @@ struct RegisterResponse {
 }
 
 impl RegisterResponse {
-    fn _is_success(&self) -> bool {
+    fn is_success(&self) -> bool {
         self.status.to_lowercase() == "success"
-    }
-
-    fn _is_failure(&self) -> bool {
-        !self._is_success()
     }
 
     async fn from_response(response: http::Response) -> Self {
@@ -68,7 +66,7 @@ pub struct LoginApp {
     token: Option<String>,
     submit: Option<AuthRequest>,
     #[serde(skip)]
-    promise: Option<Promise<Result<LoginState, String>>>,
+    login_promise: Option<Promise<Result<LoginState, String>>>,
     #[serde(skip)]
     register_promise: Option<Promise<RegisterResponse>>,
     #[serde(skip)]
@@ -79,12 +77,14 @@ pub struct LoginApp {
     state: LoginState,
     #[serde(skip)]
     register: Option<RegisterSchema>,
+    #[serde(skip)]
+    toasts: Toasts,
 }
 
 impl Default for LoginApp {
     fn default() -> Self {
         Self {
-            promise: Default::default(),
+            login_promise: Default::default(),
             register_promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/api/auth")
@@ -98,6 +98,7 @@ impl Default for LoginApp {
             submit: None,
             state: LoginState::LoggedOut,
             register: None,
+            toasts: Toasts::default(),
         }
     }
 }
@@ -133,7 +134,7 @@ impl LoginApp {
             result
         });
 
-        self.promise = Some(promise);
+        self.login_promise = Some(promise);
         self.submit = None;
     }
     fn submit_logout(&mut self, ctx: &egui::Context) {
@@ -158,7 +159,7 @@ impl LoginApp {
             result
         });
 
-        self.promise = Some(promise);
+        self.login_promise = Some(promise);
         self.submit = None;
     }
     fn submit_register(&mut self, ctx: &egui::Context) {
@@ -184,6 +185,52 @@ impl LoginApp {
 
         self.register_promise = Some(promise);
         self.submit = None;
+    }
+
+    fn check_login_promise(&mut self) {
+        if let Some(promise) = &self.login_promise {
+            if let Some(result) = promise.ready() {
+                match result {
+                    Ok(LoginState::LoggedIn(email)) => {
+                        self.state = LoginState::LoggedIn(email.clone());
+                        self.toasts
+                            .info(format!("Logged in as {}.", email))
+                            .set_duration(Some(Duration::from_secs(5)));
+                    }
+                    Ok(LoginState::LoggedOut) => {
+                        self.state = LoginState::LoggedOut;
+                        self.toasts
+                            .info("Logged out.")
+                            .set_duration(Some(Duration::from_secs(5)));
+                    }
+                    Err(e) => {
+                        self.toasts
+                            .error(format!("Failed to login: {}", e))
+                            .set_duration(Some(Duration::from_secs(5)));
+                        log::error!("Error: {}", e);
+                    }
+                }
+                self.login_promise = None;
+            }
+        }
+    }
+
+    fn check_register_promise(&mut self) {
+        if let Some(promise) = &self.register_promise {
+            if let Some(result) = promise.ready() {
+                if result.is_success() {
+                    self.toasts
+                        .info("Registered successfully! Please login.")
+                        .set_duration(Some(Duration::from_secs(5)));
+                } else {
+                    self.toasts
+                        .error("Failed to register!")
+                        .set_duration(Some(Duration::from_secs(5)));
+                }
+                self.register_promise = None;
+                self.register = None;
+            }
+        }
     }
 }
 
@@ -214,26 +261,14 @@ impl super::App for LoginApp {
             .open(open)
             .default_height(500.0)
             .show(ctx, |ui| self.ui(ui));
+        self.toasts.show(ctx);
     }
 }
 
 impl super::View for LoginApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        if let Some(promise) = &self.promise {
-            if let Some(result) = promise.ready() {
-                match result {
-                    Ok(LoginState::LoggedIn(email)) => {
-                        self.state = LoginState::LoggedIn(email.clone());
-                    }
-                    Ok(LoginState::LoggedOut) => {
-                        self.state = LoginState::LoggedOut;
-                    }
-                    Err(e) => {
-                        log::error!("Error: {}", e);
-                    }
-                }
-            }
-        }
+        self.check_login_promise();
+        self.check_register_promise();
 
         egui::Grid::new("login_grid")
             .num_columns(2)
