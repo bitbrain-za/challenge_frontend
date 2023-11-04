@@ -1,23 +1,10 @@
-use crate::helpers::{Challenges, Languages};
+use crate::helpers::{
+    submission::{Submission, SubmissionResult},
+    Challenges, Languages,
+};
 use gloo_net::http;
 use poll_promise::Promise;
 use web_sys::RequestCredentials;
-
-#[derive(Clone, PartialEq, serde::Serialize)]
-struct Submission {
-    challenge: String,
-    player: String,
-    name: String,
-    language: String,
-    code: String,
-    test: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
-pub enum SubmissionResult {
-    Success { score: u32, message: String },
-    Failure { message: String },
-}
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -102,17 +89,18 @@ impl CodeEditor {
     fn as_submission(&self) -> Submission {
         let challenge = self.challenge.to_string();
         let player = "player".to_string();
-        let name = "name".to_string();
+        let filename = "filename".to_string();
         let language = self.language.to_string();
         let code = self.code.clone();
         let test = false;
         Submission {
             challenge,
             player,
-            name,
+            filename,
             language,
             code,
             test,
+            binary: None,
         }
     }
 }
