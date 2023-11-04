@@ -57,7 +57,7 @@ impl Default for FileUpload {
 }
 
 impl FileUpload {
-    fn submit(&mut self, ctx: &egui::Context) {
+    fn _submit(&mut self, ctx: &egui::Context) {
         if self.run.is_none() {
             return;
         }
@@ -100,14 +100,14 @@ impl FileUpload {
         self.promise = Some(promise);
     }
 
-    fn as_test_submission(&self) -> Submission {
+    fn _as_test_submission(&self) -> Submission {
         Submission {
             test: true,
-            ..self.as_submission()
+            ..self._as_submission()
         }
     }
 
-    fn as_submission(&self) -> Submission {
+    fn _as_submission(&self) -> Submission {
         let challenge = self.challenge.to_string();
         let player = "player".to_string();
         let name = "name".to_string();
@@ -162,7 +162,7 @@ impl super::View for FileUpload {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
+fn execute<F: Future<Output = ()> + Send + 'static>(_f: F) {
     todo!();
 }
 
