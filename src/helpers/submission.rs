@@ -28,9 +28,10 @@ impl Submission {
             form.append_with_str("code", code).unwrap();
         }
         if let Some(binary) = &self.binary {
-            log::info!("Binary: {:?}", binary);
-            let uint8array = js_sys::Uint8Array::from(binary.as_slice());
-            let array = js_sys::Array::from(&uint8array);
+            let uint8arr =
+                js_sys::Uint8Array::new(&unsafe { js_sys::Uint8Array::view(binary) }.into());
+            let array = js_sys::Array::new();
+            array.push(&uint8arr.buffer());
             let blob = web_sys::Blob::new_with_u8_array_sequence(array.as_ref()).unwrap();
             form.append_with_blob("binary", &blob).unwrap();
         }
