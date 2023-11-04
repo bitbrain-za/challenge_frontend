@@ -5,8 +5,8 @@ mod challenge_info;
 pub use challenge_info::ChallengeInfoApp;
 pub mod login_app;
 pub use login_app::LoginApp;
+pub mod binary_upload;
 pub mod code_editor;
-pub mod file_upload;
 
 /// Something to view in the demo windows
 pub trait View {

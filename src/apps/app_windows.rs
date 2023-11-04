@@ -20,7 +20,7 @@ impl Default for Apps {
             Box::<super::scoreboard_app::ScoreBoardApp>::default(),
             Box::<super::challenge_info::ChallengeInfoApp>::default(),
             Box::<super::code_editor::CodeEditor>::default(),
-            Box::<super::file_upload::FileUpload>::default(),
+            Box::<super::binary_upload::BinaryUpload>::default(),
         ])
     }
 }

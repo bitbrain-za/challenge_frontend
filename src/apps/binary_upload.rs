@@ -15,7 +15,7 @@ struct Binary {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
-pub struct FileUpload {
+pub struct BinaryUpload {
     #[serde(skip)]
     promise: Option<Promise<Result<SubmissionResult, String>>>,
     #[serde(skip)]
@@ -30,14 +30,17 @@ pub struct FileUpload {
     submit: bool,
 }
 
-impl Default for FileUpload {
+impl Default for BinaryUpload {
     fn default() -> Self {
         Self {
             promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
-            run: Submission::default(),
+            run: Submission {
+                filename: "Select Binary".to_string(),
+                ..Default::default()
+            },
             binary_channel: channel(),
             submit: false,
             file: vec![],
@@ -45,7 +48,7 @@ impl Default for FileUpload {
     }
 }
 
-impl FileUpload {
+impl BinaryUpload {
     fn _submit(&mut self, ctx: &egui::Context) {
         if !self.submit {
             return;
@@ -90,7 +93,7 @@ impl FileUpload {
     }
 }
 
-impl super::App for FileUpload {
+impl super::App for BinaryUpload {
     fn name(&self) -> &'static str {
         "💻 File Upload"
     }
@@ -109,7 +112,7 @@ impl super::App for FileUpload {
     }
 }
 
-impl super::View for FileUpload {
+impl super::View for BinaryUpload {
     fn ui(&mut self, ui: &mut egui::Ui) {
         egui::ComboBox::from_label("Language")
             .selected_text(format!("{}", self.run.language))
@@ -137,9 +140,10 @@ impl super::View for FileUpload {
                 }
             });
 
-        ui.label(&self.run.filename);
-        // a simple button opening the dialog
-        if ui.button("Open text file").clicked() {
+        ui.checkbox(&mut self.run.test, "Test");
+        ui.separator();
+
+        if ui.button(self.run.filename.clone()).clicked() {
             let sender = self.binary_channel.0.clone();
             let task = rfd::AsyncFileDialog::new().pick_file();
             execute(async move {
@@ -152,6 +156,11 @@ impl super::View for FileUpload {
                     });
                 }
             });
+        }
+        ui.separator();
+
+        if ui.button("Submit").clicked() {
+            self.submit = true;
         }
     }
 }
