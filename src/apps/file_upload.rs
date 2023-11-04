@@ -8,6 +8,11 @@ use std::future::Future;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use web_sys::RequestCredentials;
 
+struct Binary {
+    filename: String,
+    bytes: Vec<u8>,
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct FileUpload {
@@ -18,9 +23,9 @@ pub struct FileUpload {
     #[serde(skip)]
     run: Submission,
     #[serde(skip)]
-    text_channel: (Sender<String>, Receiver<String>),
+    binary_channel: (Sender<Binary>, Receiver<Binary>),
     #[serde(skip)]
-    sample_text: String,
+    file: Vec<u8>,
     #[serde(skip)]
     submit: bool,
 }
@@ -33,9 +38,9 @@ impl Default for FileUpload {
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
             run: Submission::default(),
-            text_channel: channel(),
-            sample_text: "yo".into(),
+            binary_channel: channel(),
             submit: false,
+            file: vec![],
         }
     }
 }
@@ -97,16 +102,15 @@ impl super::App for FileUpload {
             .default_height(500.0)
             .show(ctx, |ui| self.ui(ui));
 
-        if let Ok(f) = self.text_channel.1.try_recv() {
-            self.sample_text = f;
+        if let Ok(f) = self.binary_channel.1.try_recv() {
+            self.run.filename = f.filename;
+            self.file = f.bytes;
         }
     }
 }
 
 impl super::View for FileUpload {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        ui.label(&self.sample_text);
-
         egui::ComboBox::from_label("Language")
             .selected_text(format!("{}", self.run.language))
             .show_ui(ui, |ui| {
@@ -133,16 +137,19 @@ impl super::View for FileUpload {
                 }
             });
 
-        ui.label(&self.sample_text);
+        ui.label(&self.run.filename);
         // a simple button opening the dialog
         if ui.button("Open text file").clicked() {
-            let sender = self.text_channel.0.clone();
+            let sender = self.binary_channel.0.clone();
             let task = rfd::AsyncFileDialog::new().pick_file();
             execute(async move {
                 let file = task.await;
                 if let Some(file) = file {
-                    let text = file.read().await;
-                    let _ = sender.send(String::from_utf8_lossy(&text).to_string());
+                    let bytes = file.read().await;
+                    let _ = sender.send(Binary {
+                        filename: file.file_name(),
+                        bytes,
+                    });
                 }
             });
         }
