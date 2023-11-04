@@ -25,8 +25,6 @@ pub struct BinaryUpload {
     #[serde(skip)]
     binary_channel: (Sender<Binary>, Receiver<Binary>),
     #[serde(skip)]
-    file: Vec<u8>,
-    #[serde(skip)]
     submit: bool,
 }
 
@@ -43,13 +41,12 @@ impl Default for BinaryUpload {
             },
             binary_channel: channel(),
             submit: false,
-            file: vec![],
         }
     }
 }
 
 impl BinaryUpload {
-    fn _submit(&mut self, ctx: &egui::Context) {
+    fn submit(&mut self, ctx: &egui::Context) {
         if !self.submit {
             return;
         }
@@ -61,9 +58,11 @@ impl BinaryUpload {
         let ctx = ctx.clone();
 
         let promise = Promise::spawn_local(async move {
+            let formdata = submission.to_formdata();
+
             let response = http::Request::post(&url)
                 .credentials(RequestCredentials::Include)
-                .json(&submission)
+                .body(formdata)
                 .unwrap()
                 .send()
                 .await
@@ -107,8 +106,9 @@ impl super::App for BinaryUpload {
 
         if let Ok(f) = self.binary_channel.1.try_recv() {
             self.run.filename = f.filename;
-            self.file = f.bytes;
+            self.run.binary = Some(f.bytes);
         }
+        self.submit(ctx);
     }
 }
 
