@@ -1,12 +1,13 @@
+use super::{Challenges, Languages};
+
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Submission {
-    pub player: String,
-    pub challenge: String,
+    pub challenge: Challenges,
     pub filename: String,
-    pub language: String,
+    pub language: Languages,
     pub test: bool,
 
-    pub code: String,
+    pub code: Option<String>,
     #[serde(skip)]
     pub binary: Option<Vec<u8>>,
 }

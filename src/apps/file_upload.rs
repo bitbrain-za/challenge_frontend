@@ -1,70 +1,54 @@
-use crate::helpers::{Challenges, Languages};
+use crate::helpers::{
+    submission::{Submission, SubmissionResult},
+    Challenges, Languages,
+};
 use gloo_net::http;
 use poll_promise::Promise;
 use std::future::Future;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use web_sys::RequestCredentials;
 
-#[derive(Clone, PartialEq, serde::Serialize)]
-struct Submission {
-    challenge: String,
-    player: String,
-    name: String,
-    language: String,
-    code: String,
-    test: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
-pub enum SubmissionResult {
-    Success { score: u32, message: String },
-    Failure { message: String },
-}
-
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct FileUpload {
-    language: Languages,
-    code: String,
-    challenge: Challenges,
     #[serde(skip)]
     promise: Option<Promise<Result<SubmissionResult, String>>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
-    run: Option<Submission>,
+    run: Submission,
     #[serde(skip)]
     text_channel: (Sender<String>, Receiver<String>),
     #[serde(skip)]
     sample_text: String,
+    #[serde(skip)]
+    submit: bool,
 }
 
 impl Default for FileUpload {
     fn default() -> Self {
         Self {
-            language: Languages::Python,
-            code: "#A very simple example\nprint(\"Hello world!\")".into(),
             promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
-            run: None,
-            challenge: Challenges::default(),
+            run: Submission::default(),
             text_channel: channel(),
             sample_text: "yo".into(),
+            submit: false,
         }
     }
 }
 
 impl FileUpload {
     fn _submit(&mut self, ctx: &egui::Context) {
-        if self.run.is_none() {
+        if !self.submit {
             return;
         }
-        let submission = self.run.clone().unwrap();
-        self.run = None;
+        self.submit = false;
+        let submission = self.run.clone();
 
-        let url = format!("{}api/game/submit", self.url);
+        let url = format!("{}api/game/binary", self.url);
         log::debug!("Sending to {}", url);
         let ctx = ctx.clone();
 
@@ -99,30 +83,6 @@ impl FileUpload {
 
         self.promise = Some(promise);
     }
-
-    fn _as_test_submission(&self) -> Submission {
-        Submission {
-            test: true,
-            ..self._as_submission()
-        }
-    }
-
-    fn _as_submission(&self) -> Submission {
-        let challenge = self.challenge.to_string();
-        let player = "player".to_string();
-        let name = "name".to_string();
-        let language = self.language.to_string();
-        let code = self.code.clone();
-        let test = false;
-        Submission {
-            challenge,
-            player,
-            name,
-            language,
-            code,
-            test,
-        }
-    }
 }
 
 impl super::App for FileUpload {
@@ -145,6 +105,34 @@ impl super::App for FileUpload {
 
 impl super::View for FileUpload {
     fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.label(&self.sample_text);
+
+        egui::ComboBox::from_label("Language")
+            .selected_text(format!("{}", self.run.language))
+            .show_ui(ui, |ui| {
+                ui.style_mut().wrap = Some(false);
+                ui.set_min_width(60.0);
+
+                for language in Languages::iter() {
+                    ui.selectable_value(&mut self.run.language, language, format!("{}", language));
+                }
+            });
+
+        egui::ComboBox::from_label("Challenge")
+            .selected_text(format!("{}", self.run.challenge))
+            .show_ui(ui, |ui| {
+                ui.style_mut().wrap = Some(false);
+                ui.set_min_width(60.0);
+
+                for challenge in Challenges::iter() {
+                    ui.selectable_value(
+                        &mut self.run.challenge,
+                        challenge,
+                        format!("{}", challenge),
+                    );
+                }
+            });
+
         ui.label(&self.sample_text);
         // a simple button opening the dialog
         if ui.button("Open text file").clicked() {

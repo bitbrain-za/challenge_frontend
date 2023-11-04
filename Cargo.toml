@@ -1,6 +1,6 @@
 [package]
 name = "challenge_frontend"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2021"
 rust-version = "1.71"
 authors = ["Philip Barlow"]
@@ -29,7 +29,7 @@ egui_commonmark = "0.9.0"
 serde = { version = "1", features = ["derive"] }
 web-sys = "0.3.64"
 egui-notify = "0.10"
-rfd = "0.11"
+rfd = "0.12.1"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

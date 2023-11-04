@@ -1,6 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-#[derive(Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Debug, Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize,
+)]
 pub enum Languages {
     #[default]
     C,

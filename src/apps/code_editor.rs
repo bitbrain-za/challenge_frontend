@@ -9,39 +9,44 @@ use web_sys::RequestCredentials;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct CodeEditor {
-    language: Languages,
-    code: String,
-    challenge: Challenges,
     #[serde(skip)]
     promise: Option<Promise<Result<SubmissionResult, String>>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
-    run: Option<Submission>,
+    run: Submission,
+    #[serde(skip)]
+    submit: bool,
+    #[serde(skip)]
+    code: String,
 }
 
 impl Default for CodeEditor {
     fn default() -> Self {
+        let mut run = Submission {
+            code: Some("#A very simple example\nprint(\"Hello world!\")".into()),
+            ..Default::default()
+        };
+        run.language = Languages::Python;
         Self {
-            language: Languages::Python,
-            code: "#A very simple example\nprint(\"Hello world!\")".into(),
             promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
-            run: None,
-            challenge: Challenges::default(),
+            run,
+            code: "#A very simple example\nprint(\"Hello world!\")".into(),
+            submit: false,
         }
     }
 }
 
 impl CodeEditor {
     fn submit(&mut self, ctx: &egui::Context) {
-        if self.run.is_none() {
+        if !self.submit {
             return;
         }
-        let submission = self.run.clone().unwrap();
-        self.run = None;
+        self.submit = false;
+        let submission = self.run.clone();
 
         let url = format!("{}api/game/submit", self.url);
         log::debug!("Sending to {}", url);
@@ -79,29 +84,14 @@ impl CodeEditor {
         self.promise = Some(promise);
     }
 
-    fn as_test_submission(&self) -> Submission {
-        Submission {
-            test: true,
-            ..self.as_submission()
-        }
+    fn as_test_submission(&mut self) {
+        self.run.code = Some(self.code.clone());
+        self.run.test = true;
     }
 
-    fn as_submission(&self) -> Submission {
-        let challenge = self.challenge.to_string();
-        let player = "player".to_string();
-        let filename = "filename".to_string();
-        let language = self.language.to_string();
-        let code = self.code.clone();
-        let test = false;
-        Submission {
-            challenge,
-            player,
-            filename,
-            language,
-            code,
-            test,
-            binary: None,
-        }
+    fn as_submission(&mut self) {
+        self.run.code = Some(self.code.clone());
+        self.run.test = false;
     }
 }
 
@@ -130,9 +120,23 @@ impl super::View for CodeEditor {
             ui.label("Language:");
 
             for l in Languages::iter() {
-                ui.selectable_value(&mut self.language, l, format!("{}", l));
+                ui.selectable_value(&mut self.run.language, l, format!("{}", l));
             }
         });
+        egui::ComboBox::from_label("Challenge")
+            .selected_text(format!("{}", self.run.challenge))
+            .show_ui(ui, |ui| {
+                ui.style_mut().wrap = Some(false);
+                ui.set_min_width(60.0);
+
+                for challenge in Challenges::iter() {
+                    ui.selectable_value(
+                        &mut self.run.challenge,
+                        challenge,
+                        format!("{}", challenge),
+                    );
+                }
+            });
 
         let mut theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
         ui.collapsing("Theme", |ui| {
@@ -147,7 +151,7 @@ impl super::View for CodeEditor {
                 ui.ctx(),
                 &theme,
                 string,
-                &self.language.to_string(),
+                &self.run.language.to_string(),
             );
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
@@ -169,11 +173,13 @@ impl super::View for CodeEditor {
             ui.vertical(|ui| {
                 if ui.button("Submit").clicked() {
                     log::debug!("Submitting code");
-                    self.run = Some(self.as_submission());
+                    self.as_submission();
+                    self.submit = true;
                 }
                 if ui.button("Test").clicked() {
                     log::debug!("Testing code");
-                    self.run = Some(self.as_test_submission());
+                    self.as_test_submission();
+                    self.submit = true;
                 }
             });
             ui.separator();
