@@ -1,5 +1,6 @@
 use crate::helpers::refresh;
 use egui_notify::Toasts;
+use email_address::*;
 use gloo_net::http;
 use poll_promise::Promise;
 use std::time::Duration;
@@ -349,7 +350,22 @@ impl LoginApp {
                 if ui.button("Register").clicked() {
                     if self.register.password != self.register.confirm_password {
                         self.toasts
-                            .error("Passwords do not match!")
+                            .error("Passwords do not match")
+                            .set_duration(Some(Duration::from_secs(5)));
+                    } else if !EmailAddress::is_valid(&self.register.email) {
+                        self.toasts
+                            .error("Invalid email address")
+                            .set_duration(Some(Duration::from_secs(5)));
+                    } else if !self
+                        .register
+                        .email
+                        .contains(option_env!("ALLOWED_DOMAIN").unwrap_or("dummy.com"))
+                    {
+                        self.toasts
+                            .error(format!(
+                                "Email must be from {}",
+                                option_env!("ALLOWED_DOMAIN").unwrap_or("dummy.com")
+                            ))
                             .set_duration(Some(Duration::from_secs(5)));
                     } else {
                         self.submit = Some(AuthRequest::Register);

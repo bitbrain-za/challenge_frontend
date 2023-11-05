@@ -543,13 +543,14 @@ dependencies = [
 
 [[package]]
 name = "challenge_frontend"
-version = "0.5.7"
+version = "0.5.8"
 dependencies = [
  "eframe",
  "egui",
  "egui-notify",
  "egui_commonmark",
  "egui_extras",
+ "email_address",
  "env_logger",
  "gloo-net",
  "js-sys",
@@ -913,6 +914,15 @@ dependencies = [
  "memoffset 0.6.5",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "email_address"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2153bd83ebc09db15bcbdc3e2194d901804952e3dc96967e1cd3b0c5c32d112"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
