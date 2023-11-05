@@ -1,3 +1,4 @@
+use crate::helpers::refresh;
 use egui_notify::Toasts;
 use gloo_net::http;
 use poll_promise::Promise;
@@ -59,6 +60,7 @@ enum LoginState {
     LoggedIn(String),
     LoggedOut,
     RegisterNewUser,
+    Expired,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -81,6 +83,8 @@ pub struct LoginApp {
     register: RegisterSchema,
     #[serde(skip)]
     toasts: Toasts,
+    #[serde(skip)]
+    token_refresh_promise: Option<Promise<Result<refresh::RefreshResponse, String>>>,
 }
 
 impl Default for LoginApp {
@@ -101,6 +105,7 @@ impl Default for LoginApp {
             state: LoginState::LoggedOut,
             register: RegisterSchema::default(),
             toasts: Toasts::default(),
+            token_refresh_promise: None,
         }
     }
 }
@@ -152,6 +157,16 @@ impl LoginApp {
                 .unwrap();
             let result = match response.status() {
                 200 => Ok(LoginState::LoggedOut),
+                401 => {
+                    let text = response.text().await;
+                    let text = text.map(|text| text.to_owned());
+                    let text = match text {
+                        Ok(text) => text,
+                        Err(e) => e.to_string(),
+                    };
+                    log::warn!("Auth Error: {:?}", text);
+                    Ok(LoginState::Expired)
+                }
                 _ => {
                     let text = response.text().await.unwrap();
                     Err(text)
@@ -205,6 +220,10 @@ impl LoginApp {
                             .info("Logged out.")
                             .set_duration(Some(Duration::from_secs(5)));
                     }
+                    Ok(LoginState::Expired) => {
+                        self.state = LoginState::Expired;
+                        self.token_refresh_promise = Some(refresh::submit_refresh(&self.url));
+                    }
                     Err(e) => {
                         self.toasts
                             .error(format!("Failed: {}", e))
@@ -234,6 +253,23 @@ impl LoginApp {
                 }
                 self.register_promise = None;
                 self.register = RegisterSchema::default();
+            }
+        }
+    }
+
+    fn check_refresh_promise(&mut self) {
+        if let Some(promise) = &self.token_refresh_promise {
+            if let Some(result) = promise.ready() {
+                if let Ok(result) = result {
+                    if "success" == result.status {
+                        log::info!("Token refreshed");
+                        self.state = LoginState::LoggedIn(self.login.email.clone());
+                        self.submit = Some(AuthRequest::Logout);
+                    } else {
+                        log::error!("Failed to refresh token: {:?}", result);
+                    }
+                }
+                self.token_refresh_promise = None;
             }
         }
     }
@@ -376,6 +412,7 @@ impl super::App for LoginApp {
             .show(ctx, |ui| self.ui(ui));
         self.check_login_promise();
         self.check_register_promise();
+        self.check_refresh_promise();
         self.toasts.show(ctx);
     }
 }
@@ -386,6 +423,10 @@ impl super::View for LoginApp {
             LoginState::LoggedIn(..) => self.ui_logged_in(ui),
             LoginState::LoggedOut => self.ui_logged_out(ui),
             LoginState::RegisterNewUser => self.ui_register(ui),
+            LoginState::Expired => {
+                ui.label("Your session has expired. Please login again.");
+                self.ui_logged_out(ui);
+            }
         }
     }
 }

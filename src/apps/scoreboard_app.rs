@@ -97,7 +97,6 @@ impl ScoreBoardApp {
                     log::warn!("Auth Error: {:?}", text);
                     FetchResponse::FailAuth
                 }
-
                 _ => {
                     log::error!("Response: {:?}", text);
                     FetchResponse::Failure(text.unwrap())
