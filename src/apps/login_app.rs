@@ -89,12 +89,12 @@ pub struct LoginApp {
 
 impl Default for LoginApp {
     fn default() -> Self {
+        let url = option_env!("BACKEND_URL").unwrap().to_string();
         Self {
+            token_refresh_promise: refresh::submit_refresh(&url),
             login_promise: Default::default(),
             register_promise: Default::default(),
-            url: option_env!("BACKEND_URL")
-                .unwrap_or("http://123.4.5.6:3000/api/auth")
-                .to_string(),
+            url,
             login: LoginSchema {
                 email: "admin@admin.com".to_string(),
                 password: "password123".to_string(),
@@ -105,7 +105,6 @@ impl Default for LoginApp {
             state: LoginState::LoggedOut,
             register: RegisterSchema::default(),
             toasts: Toasts::default(),
-            token_refresh_promise: None,
         }
     }
 }
@@ -223,6 +222,7 @@ impl LoginApp {
                     Ok(LoginState::Expired) => {
                         self.state = LoginState::Expired;
                         self.token_refresh_promise = refresh::submit_refresh(&self.url);
+                        self.submit = Some(AuthRequest::Logout);
                     }
                     Err(e) => {
                         self.toasts
@@ -379,8 +379,10 @@ impl super::App for LoginApp {
                     self.submit_login(ctx);
                 }
                 AuthRequest::Logout => {
-                    log::debug!("Submitting logout request");
-                    self.submit_logout(ctx);
+                    if self.register_promise.is_none() {
+                        log::debug!("Submitting logout request");
+                        self.submit_logout(ctx);
+                    }
                 }
                 AuthRequest::Register => {
                     log::debug!("Submitting register request");
@@ -400,7 +402,6 @@ impl super::App for LoginApp {
             refresh::RefreshStatus::InProgress => {}
             refresh::RefreshStatus::Success => {
                 self.state = LoginState::LoggedIn(self.login.email.clone());
-                self.submit = Some(AuthRequest::Logout);
             }
             refresh::RefreshStatus::Failed(_) => {
                 self.state = LoginState::LoggedOut;
