@@ -1,3 +1,6 @@
+use std::fmt::Display;
+
+use poll_promise::Promise;
 use web_sys::FormData;
 
 use super::{Challenges, Languages};
@@ -13,6 +16,8 @@ pub struct Submission {
     #[serde(skip)]
     pub binary: Option<Vec<u8>>,
 }
+
+pub type SubmissionPromise = Option<Promise<Result<SubmissionResult, String>>>;
 
 impl Submission {
     pub fn to_formdata(&self) -> FormData {
@@ -40,6 +45,27 @@ impl Submission {
 
         form
     }
+
+    pub fn check_submit_promise(promise: &mut SubmissionPromise) -> SubmissionResult {
+        let mut result = SubmissionResult::NotStarted;
+        if let Some(p) = &promise {
+            result = SubmissionResult::Busy;
+            if let Some(response) = p.ready() {
+                match response {
+                    Ok(submission_response) => {
+                        result = submission_response.clone();
+                    }
+                    Err(error) => {
+                        result = SubmissionResult::Failure {
+                            message: error.to_string(),
+                        };
+                    }
+                }
+                *promise = None;
+            }
+        }
+        result
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -49,4 +75,18 @@ pub enum SubmissionResult {
     Failure { message: String },
     NotAuthorized,
     Busy,
+}
+
+impl Display for SubmissionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SubmissionResult::NotStarted => write!(f, ""),
+            SubmissionResult::Success { score: _, message } => {
+                write!(f, "Success! {}", message)
+            }
+            SubmissionResult::Failure { message } => write!(f, "Failure: {}", message),
+            SubmissionResult::NotAuthorized => write!(f, "Not authorized"),
+            SubmissionResult::Busy => write!(f, "Busy"),
+        }
+    }
 }

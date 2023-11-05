@@ -1,6 +1,6 @@
 use crate::helpers::{
     refresh,
-    submission::{Submission, SubmissionResult},
+    submission::{Submission, SubmissionPromise, SubmissionResult},
     Challenges, Languages,
 };
 use gloo_net::http;
@@ -11,19 +11,19 @@ use web_sys::RequestCredentials;
 #[serde(default)]
 pub struct CodeEditor {
     #[serde(skip)]
-    promise: Option<Promise<Result<SubmissionResult, String>>>,
+    promise: SubmissionPromise,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
     run: Submission,
+    #[serde(skip)]
+    last_result: SubmissionResult,
     #[serde(skip)]
     submit: bool,
     #[serde(skip)]
     code: String,
     #[serde(skip)]
     token_refresh_promise: refresh::RefreshPromise,
-    #[serde(skip)]
-    last_message: Option<String>,
 }
 
 impl Default for CodeEditor {
@@ -42,7 +42,7 @@ impl Default for CodeEditor {
             code: "#A very simple example\nprint(\"Hello world!\")".into(),
             submit: false,
             token_refresh_promise: None,
-            last_message: None,
+            last_result: SubmissionResult::NotStarted,
         }
     }
 }
@@ -101,28 +101,6 @@ impl CodeEditor {
         self.run.code = Some(self.code.clone());
         self.run.test = false;
     }
-
-    fn check_fetch_promise(&mut self) -> SubmissionResult {
-        let mut result = SubmissionResult::NotStarted;
-        if let Some(promise) = &self.promise {
-            result = SubmissionResult::Busy;
-            if let Some(response) = promise.ready() {
-                match response {
-                    Ok(submission_response) => {
-                        result = submission_response.clone();
-                    }
-                    Err(error) => {
-                        log::error!("Failed to fetch scores: {}", error);
-                        result = SubmissionResult::Failure {
-                            message: error.to_string(),
-                        };
-                    }
-                }
-                self.promise = None;
-            }
-        }
-        result
-    }
 }
 
 impl super::App for CodeEditor {
@@ -145,6 +123,18 @@ impl super::App for CodeEditor {
             }
             refresh::RefreshStatus::Failed(_) => {}
             _ => (),
+        }
+
+        let submission = Submission::check_submit_promise(&mut self.promise);
+        match submission {
+            SubmissionResult::NotStarted => {}
+            SubmissionResult::NotAuthorized => {
+                self.token_refresh_promise = refresh::submit_refresh(&self.url);
+                self.last_result = submission;
+            }
+            _ => {
+                self.last_result = submission;
+            }
         }
     }
 }
@@ -228,30 +218,7 @@ impl super::View for CodeEditor {
                 }
             });
             ui.separator();
-            ui.vertical(|ui| match self.check_fetch_promise() {
-                SubmissionResult::Success { score: _, message } => {
-                    ui.label(&message);
-                    self.last_message = Some(message);
-                }
-                SubmissionResult::Failure { message } => {
-                    self.last_message = Some(format!("Fail: {}", message));
-                    ui.label(format!("Fail: {}", message));
-                }
-                SubmissionResult::NotAuthorized => {
-                    self.last_message = Some("Not authorized".to_string());
-                    ui.label("Not authorized");
-                    self.token_refresh_promise = refresh::submit_refresh(&self.url);
-                }
-                SubmissionResult::Busy => {
-                    ui.label("Running...");
-                }
-                SubmissionResult::NotStarted => match &self.last_message {
-                    Some(message) => {
-                        ui.label(format!("Message: {}", message));
-                    }
-                    None => {}
-                },
-            });
+            ui.vertical(|ui| ui.label(self.last_result.to_string()));
         });
     }
 }
