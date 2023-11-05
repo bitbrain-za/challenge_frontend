@@ -257,23 +257,6 @@ impl LoginApp {
         }
     }
 
-    fn check_refresh_promise(&mut self) {
-        if let Some(promise) = &self.token_refresh_promise {
-            if let Some(result) = promise.ready() {
-                if let Ok(result) = result {
-                    if "success" == result.status {
-                        log::info!("Token refreshed");
-                        self.state = LoginState::LoggedIn(self.login.email.clone());
-                        self.submit = Some(AuthRequest::Logout);
-                    } else {
-                        log::error!("Failed to refresh token: {:?}", result);
-                    }
-                }
-                self.token_refresh_promise = None;
-            }
-        }
-    }
-
     fn ui_logged_in(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
@@ -412,7 +395,19 @@ impl super::App for LoginApp {
             .show(ctx, |ui| self.ui(ui));
         self.check_login_promise();
         self.check_register_promise();
-        self.check_refresh_promise();
+
+        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
+            refresh::RefreshStatus::InProgress => {}
+            refresh::RefreshStatus::Success => {
+                self.state = LoginState::LoggedIn(self.login.email.clone());
+                self.submit = Some(AuthRequest::Logout);
+            }
+            refresh::RefreshStatus::Failed(_) => {
+                self.state = LoginState::LoggedOut;
+            }
+            _ => (),
+        }
+
         self.toasts.show(ctx);
     }
 }

@@ -38,8 +38,6 @@ pub struct ScoreBoardApp {
     #[serde(skip)]
     token_refresh_promise: Option<Promise<Result<refresh::RefreshResponse, String>>>,
     #[serde(skip)]
-    refresh_token: bool,
-    #[serde(skip)]
     url: String,
     #[serde(skip)]
     refresh: bool,
@@ -53,7 +51,6 @@ impl Default for ScoreBoardApp {
             sort_column: "time".to_string(),
             promise: None,
             token_refresh_promise: None,
-            refresh_token: false,
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
@@ -124,7 +121,6 @@ impl ScoreBoardApp {
         if let Some(promise) = &self.promise {
             if let Some(result) = promise.ready() {
                 if let FetchResponse::FailAuth = result {
-                    self.refresh_token = true;
                     self.token_refresh_promise = Some(refresh::submit_refresh(&self.url));
                 }
                 let result = Some(result.clone());
@@ -133,23 +129,6 @@ impl ScoreBoardApp {
             }
         }
         None
-    }
-
-    fn check_refresh_promise(&mut self) {
-        if let Some(promise) = &self.token_refresh_promise {
-            if let Some(result) = promise.ready() {
-                if let Ok(result) = result {
-                    if "success" == result.status {
-                        log::info!("Token refreshed");
-                        self.refresh = true;
-                    } else {
-                        log::error!("Failed to refresh token: {:?}", result);
-                    }
-                }
-                self.refresh_token = false;
-                self.token_refresh_promise = None;
-            }
-        }
     }
 }
 
@@ -244,7 +223,17 @@ impl ScoreBoardApp {
                 }
             }
         }
-        self.check_refresh_promise();
+        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
+            refresh::RefreshStatus::NotStarted => {}
+            refresh::RefreshStatus::InProgress => {}
+            refresh::RefreshStatus::Success => {
+                self.refresh = true;
+            }
+            refresh::RefreshStatus::Failed(text) => {
+                log::error!("Failed to refresh token: {:?}", text);
+                ui.label(text);
+            }
+        }
 
         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
         let table = TableBuilder::new(ui)

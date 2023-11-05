@@ -8,6 +8,13 @@ pub struct RefreshResponse {
     pub message: String,
 }
 
+pub enum RefreshStatus {
+    NotStarted,
+    InProgress,
+    Success,
+    Failed(String),
+}
+
 pub fn submit_refresh(url: &str) -> Promise<Result<RefreshResponse, String>> {
     let url = format!("{}api/auth/refresh", url);
     log::debug!("Refreshing token");
@@ -26,4 +33,26 @@ pub fn submit_refresh(url: &str) -> Promise<Result<RefreshResponse, String>> {
 
         result
     })
+}
+
+pub fn check_refresh_promise(
+    promise: &mut Option<Promise<Result<RefreshResponse, String>>>,
+) -> RefreshStatus {
+    let mut res = RefreshStatus::NotStarted;
+    if let Some(p) = promise {
+        res = RefreshStatus::InProgress;
+        if let Some(result) = p.ready() {
+            if let Ok(result) = result {
+                if "success" == result.status {
+                    log::info!("Token refreshed");
+                    res = RefreshStatus::Success;
+                } else {
+                    log::error!("Failed to refresh token: {:?}", result);
+                    res = RefreshStatus::Failed(result.message.clone());
+                }
+            }
+            *promise = None;
+        }
+    }
+    res
 }
