@@ -223,7 +223,6 @@ impl LoginApp {
                     Ok(LoginState::Expired) => {
                         self.state = LoginState::Expired;
                         self.token_refresh_promise = refresh::submit_refresh(&self.url);
-                        self.submit = Some(AuthRequest::Logout);
                     }
                     Err(e) => {
                         self.toasts
@@ -373,6 +372,23 @@ impl super::App for LoginApp {
         "🔐 Login"
     }
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
+        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
+            refresh::RefreshStatus::InProgress => {}
+            refresh::RefreshStatus::Success => {
+                if self.state == LoginState::Expired {
+                    self.submit = Some(AuthRequest::Logout);
+                }
+                self.state = LoginState::LoggedIn(self.login.email.clone());
+            }
+            refresh::RefreshStatus::Failed(_) => {
+                self.state = LoginState::LoggedOut;
+                self.submit = None;
+            }
+            _ => (),
+        }
+        self.check_login_promise();
+        self.check_register_promise();
+
         if let Some(s) = &self.submit {
             match s {
                 AuthRequest::Login => {
@@ -380,7 +396,7 @@ impl super::App for LoginApp {
                     self.submit_login(ctx);
                 }
                 AuthRequest::Logout => {
-                    if self.register_promise.is_none() {
+                    if self.state != LoginState::LoggedOut {
                         log::debug!("Submitting logout request");
                         self.submit_logout(ctx);
                     }
@@ -396,19 +412,6 @@ impl super::App for LoginApp {
             .open(open)
             .default_height(500.0)
             .show(ctx, |ui| self.ui(ui));
-        self.check_login_promise();
-        self.check_register_promise();
-
-        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
-            refresh::RefreshStatus::InProgress => {}
-            refresh::RefreshStatus::Success => {
-                self.state = LoginState::LoggedIn(self.login.email.clone());
-            }
-            refresh::RefreshStatus::Failed(_) => {
-                self.state = LoginState::LoggedOut;
-            }
-            _ => (),
-        }
 
         self.toasts.show(ctx);
     }
