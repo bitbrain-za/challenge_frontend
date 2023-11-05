@@ -26,13 +26,10 @@ pub fn submit_refresh(url: &str) -> RefreshPromise {
             .send()
             .await
             .unwrap();
-        let result = response
+        response
             .json::<RefreshResponse>()
             .await
-            .map_err(|e| e.to_string());
-        log::info!("Result: {:?}", result);
-
-        result
+            .map_err(|e| e.to_string())
     }))
 }
 
