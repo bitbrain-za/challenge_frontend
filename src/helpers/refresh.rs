@@ -7,7 +7,6 @@ pub struct RefreshResponse {
     pub status: String,
     pub message: String,
 }
-
 pub enum RefreshStatus {
     NotStarted,
     InProgress,
@@ -15,11 +14,13 @@ pub enum RefreshStatus {
     Failed(String),
 }
 
-pub fn submit_refresh(url: &str) -> Promise<Result<RefreshResponse, String>> {
+pub type RefreshPromise = Option<Promise<Result<RefreshResponse, String>>>;
+
+pub fn submit_refresh(url: &str) -> RefreshPromise {
     let url = format!("{}api/auth/refresh", url);
     log::debug!("Refreshing token");
 
-    Promise::spawn_local(async move {
+    Some(Promise::spawn_local(async move {
         let response = http::Request::get(&url)
             .credentials(RequestCredentials::Include)
             .send()
@@ -32,12 +33,10 @@ pub fn submit_refresh(url: &str) -> Promise<Result<RefreshResponse, String>> {
         log::info!("Result: {:?}", result);
 
         result
-    })
+    }))
 }
 
-pub fn check_refresh_promise(
-    promise: &mut Option<Promise<Result<RefreshResponse, String>>>,
-) -> RefreshStatus {
+pub fn check_refresh_promise(promise: &mut RefreshPromise) -> RefreshStatus {
     let mut res = RefreshStatus::NotStarted;
     if let Some(p) = promise {
         res = RefreshStatus::InProgress;

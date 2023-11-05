@@ -1,4 +1,5 @@
 use crate::helpers::{
+    refresh,
     submission::{Submission, SubmissionResult},
     Challenges, Languages,
 };
@@ -19,6 +20,8 @@ pub struct CodeEditor {
     submit: bool,
     #[serde(skip)]
     code: String,
+    #[serde(skip)]
+    token_refresh_promise: refresh::RefreshPromise,
 }
 
 impl Default for CodeEditor {
@@ -36,6 +39,7 @@ impl Default for CodeEditor {
             run,
             code: "#A very simple example\nprint(\"Hello world!\")".into(),
             submit: false,
+            token_refresh_promise: None,
         }
     }
 }
@@ -61,23 +65,24 @@ impl CodeEditor {
                 .await
                 .unwrap();
 
-            match response.status() {
-                200 => (),
+            let result: SubmissionResult = match response.status() {
+                200 => response.json().await.unwrap(),
+                401 => {
+                    let text = response.text().await;
+                    let text = text.map(|text| text.to_owned());
+                    let text = match text {
+                        Ok(text) => text,
+                        Err(e) => e.to_string(),
+                    };
+                    log::warn!("Auth Error: {:?}", text);
+                    SubmissionResult::NotAuthorized
+                }
                 _ => {
                     return Err(format!("Failed to submit code: {:?}", response));
                 }
-            }
-
-            log::debug!("Response: {:?}", response);
-            let headers = response.headers();
-            log::debug!("Headers: {:?}", headers);
-            for (key, value) in headers.entries() {
-                log::debug!("{}: {:?}", key, value);
-            }
-            let result: SubmissionResult = response.json().await.unwrap();
+            };
 
             ctx.request_repaint(); // wake up UI thread
-            log::info!("Result: {:?}", result);
             Ok(result)
         });
 
@@ -107,6 +112,15 @@ impl super::App for CodeEditor {
             .open(open)
             .default_height(500.0)
             .show(ctx, |ui| self.ui(ui));
+
+        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
+            refresh::RefreshStatus::InProgress => {}
+            refresh::RefreshStatus::Success => {
+                self.submit = true;
+            }
+            refresh::RefreshStatus::Failed(_) => {}
+            _ => (),
+        }
     }
 }
 
@@ -200,6 +214,10 @@ impl super::View for CodeEditor {
                                 }
                                 SubmissionResult::Failure { message } => {
                                     ui.label(format!("Message: {}", message));
+                                }
+                                SubmissionResult::NotAuthorized => {
+                                    ui.label("Not authorized");
+                                    self.token_refresh_promise = refresh::submit_refresh(&self.url);
                                 }
                             },
                             Err(error) => {

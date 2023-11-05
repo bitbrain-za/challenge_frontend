@@ -46,4 +46,5 @@ impl Submission {
 pub enum SubmissionResult {
     Success { score: u32, message: String },
     Failure { message: String },
+    NotAuthorized,
 }

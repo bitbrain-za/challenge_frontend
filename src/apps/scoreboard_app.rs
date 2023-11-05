@@ -36,7 +36,7 @@ pub struct ScoreBoardApp {
     #[serde(skip)]
     promise: Option<Promise<FetchResponse>>,
     #[serde(skip)]
-    token_refresh_promise: Option<Promise<Result<refresh::RefreshResponse, String>>>,
+    token_refresh_promise: refresh::RefreshPromise,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
@@ -121,7 +121,7 @@ impl ScoreBoardApp {
         if let Some(promise) = &self.promise {
             if let Some(result) = promise.ready() {
                 if let FetchResponse::FailAuth = result {
-                    self.token_refresh_promise = Some(refresh::submit_refresh(&self.url));
+                    self.token_refresh_promise = refresh::submit_refresh(&self.url);
                 }
                 let result = Some(result.clone());
                 self.promise = None;

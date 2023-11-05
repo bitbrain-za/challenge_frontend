@@ -84,7 +84,7 @@ pub struct LoginApp {
     #[serde(skip)]
     toasts: Toasts,
     #[serde(skip)]
-    token_refresh_promise: Option<Promise<Result<refresh::RefreshResponse, String>>>,
+    token_refresh_promise: refresh::RefreshPromise,
 }
 
 impl Default for LoginApp {
@@ -222,7 +222,7 @@ impl LoginApp {
                     }
                     Ok(LoginState::Expired) => {
                         self.state = LoginState::Expired;
-                        self.token_refresh_promise = Some(refresh::submit_refresh(&self.url));
+                        self.token_refresh_promise = refresh::submit_refresh(&self.url);
                     }
                     Err(e) => {
                         self.toasts
