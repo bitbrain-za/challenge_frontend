@@ -111,13 +111,19 @@ impl AppWindows {
                     format!("{GITHUB} GitHub"),
                     "https://github.com/bitbrain-za/judge_2331-rs",
                 );
-                ui.hyperlink_to(
-                    "🐛 Repoprt a UI bug",
-                    "https://github.com/bitbrain-za/challenge_frontend/issues/new",
+                ui.add(
+                    egui::Hyperlink::from_label_and_url(
+                        "🐛 Report a UI bug",
+                        "https://github.com/bitbrain-za/challenge_frontend/issues/new",
+                    )
+                    .open_in_new_tab(true),
                 );
-                ui.hyperlink_to(
-                    "🐛 Repoprt a backend bug",
-                    "https://github.com/bitbrain-za/challenge_backend/issues/new",
+                ui.add(
+                    egui::Hyperlink::from_label_and_url(
+                        "🐛 Report a backend bug",
+                        "https://github.com/bitbrain-za/challenge_backend/issues/new",
+                    )
+                    .open_in_new_tab(true),
                 );
                 ui.separator();
             });

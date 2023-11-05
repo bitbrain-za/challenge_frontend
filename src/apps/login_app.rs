@@ -89,7 +89,9 @@ pub struct LoginApp {
 
 impl Default for LoginApp {
     fn default() -> Self {
-        let url = option_env!("BACKEND_URL").unwrap().to_string();
+        let url = option_env!("BACKEND_URL")
+            .unwrap_or("http://localhost:3000/")
+            .to_string();
         Self {
             token_refresh_promise: refresh::submit_refresh(&url),
             login_promise: Default::default(),
@@ -126,7 +128,6 @@ impl LoginApp {
                 .await
                 .unwrap();
             let result: LoginResponse = response.json().await.unwrap();
-            log::info!("Result: {:?}", result);
 
             let result = match result {
                 LoginResponse::Success { .. } => Ok(LoginState::LoggedIn(submission.email)),
