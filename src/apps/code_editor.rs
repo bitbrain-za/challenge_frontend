@@ -114,6 +114,12 @@ impl super::View for CodeEditor {
     fn ui(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.set_height(0.0);
+
+            ui.label("Filename:");
+            ui.add(egui::widgets::text_edit::TextEdit::singleline(
+                &mut self.run.filename,
+            ))
+            .on_hover_text("What would you like this to be called on the scoreboard?");
         });
 
         ui.horizontal(|ui| {

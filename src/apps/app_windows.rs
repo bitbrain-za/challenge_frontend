@@ -93,8 +93,8 @@ impl AppWindows {
     #[allow(dead_code)] //inhibit warnings when target =/= WASM
     fn desktop_ui(&mut self, ctx: &Context) {
         egui::SidePanel::right("egui_app_panel")
-            .resizable(false)
-            .default_width(150.0)
+            .resizable(true)
+            .default_width(300.0)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.heading("🎯 apps");
@@ -110,6 +110,14 @@ impl AppWindows {
                 ui.hyperlink_to(
                     format!("{GITHUB} GitHub"),
                     "https://github.com/bitbrain-za/judge_2331-rs",
+                );
+                ui.hyperlink_to(
+                    "🐛 Repoprt a UI bug",
+                    "https://github.com/bitbrain-za/challenge_frontend/issues/new",
+                );
+                ui.hyperlink_to(
+                    "🐛 Repoprt a backend bug",
+                    "https://github.com/bitbrain-za/challenge_backend/issues/new",
                 );
                 ui.separator();
             });

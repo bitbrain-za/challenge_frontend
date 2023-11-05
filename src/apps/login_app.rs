@@ -207,7 +207,7 @@ impl LoginApp {
                     }
                     Err(e) => {
                         self.toasts
-                            .error(format!("Failed to login: {}", e))
+                            .error(format!("Failed: {}", e))
                             .set_duration(Some(Duration::from_secs(5)));
                         log::error!("Error: {}", e);
                     }
