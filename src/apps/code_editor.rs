@@ -22,6 +22,8 @@ pub struct CodeEditor {
     code: String,
     #[serde(skip)]
     token_refresh_promise: refresh::RefreshPromise,
+    #[serde(skip)]
+    last_message: Option<String>,
 }
 
 impl Default for CodeEditor {
@@ -40,6 +42,7 @@ impl Default for CodeEditor {
             code: "#A very simple example\nprint(\"Hello world!\")".into(),
             submit: false,
             token_refresh_promise: None,
+            last_message: None,
         }
     }
 }
@@ -97,6 +100,28 @@ impl CodeEditor {
     fn as_submission(&mut self) {
         self.run.code = Some(self.code.clone());
         self.run.test = false;
+    }
+
+    fn check_fetch_promise(&mut self) -> SubmissionResult {
+        let mut result = SubmissionResult::NotStarted;
+        if let Some(promise) = &self.promise {
+            result = SubmissionResult::Busy;
+            if let Some(response) = promise.ready() {
+                match response {
+                    Ok(submission_response) => {
+                        result = submission_response.clone();
+                    }
+                    Err(error) => {
+                        log::error!("Failed to fetch scores: {}", error);
+                        result = SubmissionResult::Failure {
+                            message: error.to_string(),
+                        };
+                    }
+                }
+                self.promise = None;
+            }
+        }
+        result
     }
 }
 
@@ -203,31 +228,29 @@ impl super::View for CodeEditor {
                 }
             });
             ui.separator();
-            ui.vertical(|ui| {
-                if let Some(promise) = &self.promise {
-                    if let Some(result) = promise.ready() {
-                        match result {
-                            Ok(submission_response) => match &submission_response {
-                                SubmissionResult::Success { score, message } => {
-                                    ui.label(format!("Message: {}", message));
-                                    ui.label(format!("Score: {}", score));
-                                }
-                                SubmissionResult::Failure { message } => {
-                                    ui.label(format!("Message: {}", message));
-                                }
-                                SubmissionResult::NotAuthorized => {
-                                    ui.label("Not authorized");
-                                    self.token_refresh_promise = refresh::submit_refresh(&self.url);
-                                }
-                            },
-                            Err(error) => {
-                                log::error!("Failed to fetch scores: {}", error);
-                            }
-                        }
-                    } else {
-                        ui.label("Running...");
-                    }
+            ui.vertical(|ui| match self.check_fetch_promise() {
+                SubmissionResult::Success { score: _, message } => {
+                    ui.label(&message);
+                    self.last_message = Some(message);
                 }
+                SubmissionResult::Failure { message } => {
+                    self.last_message = Some(format!("Fail: {}", message));
+                    ui.label(format!("Fail: {}", message));
+                }
+                SubmissionResult::NotAuthorized => {
+                    self.last_message = Some("Not authorized".to_string());
+                    ui.label("Not authorized");
+                    self.token_refresh_promise = refresh::submit_refresh(&self.url);
+                }
+                SubmissionResult::Busy => {
+                    ui.label("Running...");
+                }
+                SubmissionResult::NotStarted => match &self.last_message {
+                    Some(message) => {
+                        ui.label(format!("Message: {}", message));
+                    }
+                    None => {}
+                },
             });
         });
     }

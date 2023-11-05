@@ -44,7 +44,9 @@ impl Submission {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SubmissionResult {
+    NotStarted,
     Success { score: u32, message: String },
     Failure { message: String },
     NotAuthorized,
+    Busy,
 }
