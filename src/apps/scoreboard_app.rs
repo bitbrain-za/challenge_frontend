@@ -1,4 +1,4 @@
-use crate::helpers::Challenges;
+use crate::helpers::{refresh, Challenges};
 use gloo_net::http;
 use poll_promise::Promise;
 use scoreboard_db::Builder as FilterBuilder;
@@ -14,10 +14,11 @@ enum FilterOption {
     UniqueLanguage,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 enum FetchResponse {
     Success(Vec<Score>),
     Failure(String),
+    FailAuth,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -30,8 +31,14 @@ pub struct ScoreBoardApp {
     active_filter: FilterOption,
     active_sort_column: String,
 
+    scores: Option<Vec<Score>>,
+
     #[serde(skip)]
     promise: Option<Promise<FetchResponse>>,
+    #[serde(skip)]
+    token_refresh_promise: Option<Promise<Result<refresh::RefreshResponse, String>>>,
+    #[serde(skip)]
+    refresh_token: bool,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
@@ -44,7 +51,9 @@ impl Default for ScoreBoardApp {
             challenge: Challenges::default(),
             filter: FilterOption::All,
             sort_column: "time".to_string(),
-            promise: Default::default(),
+            promise: None,
+            token_refresh_promise: None,
+            refresh_token: false,
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
@@ -53,6 +62,7 @@ impl Default for ScoreBoardApp {
             active_challenge: Challenges::default(),
             active_filter: FilterOption::All,
             active_sort_column: "time".to_string(),
+            scores: None,
         }
     }
 }
@@ -63,6 +73,7 @@ impl ScoreBoardApp {
             return;
         }
         self.refresh = false;
+        self.scores = None;
 
         let url = format!("{}api/game/scores/{}", self.url, self.challenge);
         let ctx = ctx.clone();
@@ -78,6 +89,15 @@ impl ScoreBoardApp {
                     let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
                     FetchResponse::Success(scores)
                 }
+                401 => {
+                    let text = match text {
+                        Ok(text) => text,
+                        Err(e) => e.to_string(),
+                    };
+                    log::warn!("Auth Error: {:?}", text);
+                    FetchResponse::FailAuth
+                }
+
                 _ => {
                     log::error!("Response: {:?}", text);
                     FetchResponse::Failure(text.unwrap())
@@ -98,6 +118,38 @@ impl ScoreBoardApp {
             self.active_filter = self.filter;
             self.active_sort_column = self.sort_column.clone();
             self.refresh = true;
+        }
+    }
+
+    fn check_fetch_promise(&mut self) -> Option<FetchResponse> {
+        if let Some(promise) = &self.promise {
+            if let Some(result) = promise.ready() {
+                if let FetchResponse::FailAuth = result {
+                    self.refresh_token = true;
+                    self.token_refresh_promise = Some(refresh::submit_refresh(&self.url));
+                }
+                let result = Some(result.clone());
+                self.promise = None;
+                return result;
+            }
+        }
+        None
+    }
+
+    fn check_refresh_promise(&mut self) {
+        if let Some(promise) = &self.token_refresh_promise {
+            if let Some(result) = promise.ready() {
+                if let Ok(result) = result {
+                    if "success" == result.status {
+                        log::info!("Token refreshed");
+                        self.refresh = true;
+                    } else {
+                        log::error!("Failed to refresh token: {:?}", result);
+                    }
+                }
+                self.refresh_token = false;
+                self.token_refresh_promise = None;
+            }
         }
     }
 }
@@ -180,21 +232,22 @@ impl ScoreBoardApp {
     fn table_ui(&mut self, ui: &mut egui::Ui) {
         use egui_extras::{Column, TableBuilder};
 
-        let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
-        let mut scores: Option<Vec<Score>> = None;
-        if let Some(promise) = &self.promise {
-            if let Some(result) = promise.ready() {
-                match result {
-                    FetchResponse::Success(fetched_scores) => {
-                        scores = Some(fetched_scores.clone());
-                    }
-                    FetchResponse::Failure(message) => {
-                        ui.label(format!("Message: {}", message));
-                    }
+        if let Some(result) = self.check_fetch_promise() {
+            match result {
+                FetchResponse::Success(s) => {
+                    self.scores = Some(s);
+                }
+                FetchResponse::Failure(text) => {
+                    ui.label(text);
+                }
+                FetchResponse::FailAuth => {
+                    ui.label("Failed to authenticate, refreshing token");
                 }
             }
         }
+        self.check_refresh_promise();
 
+        let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
         let table = TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
@@ -225,7 +278,7 @@ impl ScoreBoardApp {
                 });
             })
             .body(|mut body| {
-                if let Some(scores) = scores {
+                if let Some(scores) = &self.scores {
                     let mut filters = FilterBuilder::new();
                     match self.filter {
                         FilterOption::All => {}
