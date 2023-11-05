@@ -1,6 +1,6 @@
 use crate::helpers::{
     refresh,
-    submission::{Submission, SubmissionResult},
+    submission::{Submission, SubmissionPromise, SubmissionResult},
     Challenges, Languages,
 };
 use gloo_net::http;
@@ -18,8 +18,9 @@ struct Binary {
 #[serde(default)]
 pub struct BinaryUpload {
     #[serde(skip)]
-    promise: Option<Promise<Result<SubmissionResult, String>>>,
+    promise: SubmissionPromise,
     #[serde(skip)]
+    last_result: SubmissionResult,
     url: String,
     #[serde(skip)]
     run: Submission,
@@ -45,6 +46,7 @@ impl Default for BinaryUpload {
             binary_channel: channel(),
             submit: false,
             token_refresh_promise: None,
+            last_result: SubmissionResult::NotStarted,
         }
     }
 }
@@ -123,6 +125,18 @@ impl super::App for BinaryUpload {
             refresh::RefreshStatus::Failed(_) => {}
             _ => (),
         }
+
+        let submission = Submission::check_submit_promise(&mut self.promise);
+        match submission {
+            SubmissionResult::NotStarted => {}
+            SubmissionResult::NotAuthorized => {
+                self.token_refresh_promise = refresh::submit_refresh(&self.url);
+                self.last_result = submission;
+            }
+            _ => {
+                self.last_result = submission;
+            }
+        }
     }
 }
 
@@ -171,10 +185,12 @@ impl super::View for BinaryUpload {
                 }
             });
         }
-        ui.separator();
 
-        if ui.button("Submit").clicked() {
-            self.submit = true;
+        if "Select Binary" != &self.run.filename {
+            ui.separator();
+            if ui.button("Submit").clicked() {
+                self.submit = true;
+            }
         }
     }
 }
