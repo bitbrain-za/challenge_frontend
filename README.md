@@ -6,8 +6,6 @@
 
 This is the frontend for an in house game.
 
-This forked from a template repo for [eframe](https://github.com/emilk/egui/tree/master/crates/eframe), a framework for writing apps using [egui](https://github.com/emilk/egui/).
-
 [Test Deployment](https://bitbrain-za.github.io/challenge_frontend/)
 
 ### Testing locally
@@ -46,3 +44,6 @@ We use [Trunk](https://trunkrs.dev/) to build for web target.
 >
 > If `gh-pages` is not available in `Source`, just create and push a branch called `gh-pages` and it should be available.
 
+
+### References
+- This forked from a template repo for [eframe](https://github.com/emilk/egui/tree/master/crates/eframe), a framework for writing apps using [egui](https://github.com/emilk/egui/).
