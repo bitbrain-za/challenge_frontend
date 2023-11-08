@@ -21,6 +21,7 @@ impl Default for Apps {
             Box::<super::challenge_info::ChallengeInfoApp>::default(),
             Box::<super::code_editor::CodeEditor>::default(),
             Box::<super::binary_upload::BinaryUpload>::default(),
+            Box::<super::PasswordResetApp>::default(),
         ])
     }
 }

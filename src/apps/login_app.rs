@@ -19,6 +19,19 @@ struct LoginSchema {
     password: String,
 }
 
+impl LoginSchema {
+    fn to_forgot_password(&self) -> ForgotPasswordSchema {
+        ForgotPasswordSchema {
+            email: self.email.clone(),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, serde::Serialize)]
+struct ForgotPasswordSchema {
+    email: String,
+}
+
 #[derive(Default, Clone, PartialEq, serde::Serialize)]
 struct RegisterSchema {
     name: String,
@@ -205,6 +218,31 @@ impl LoginApp {
         self.submit = None;
     }
 
+    fn submit_forgot_password(&mut self) {
+        let submission = self.login.to_forgot_password();
+        let url = format!("{}api/auth/forgotpassword", self.url);
+
+        self.toasts
+            .info(format!(
+                "If {} is a registered address you will receive a password reset link shortly.",
+                self.login.email
+            ))
+            .set_duration(Some(Duration::from_secs(5)));
+
+        let promise = Promise::spawn_local(async move {
+            let response = http::Request::post(&url)
+                .json(&submission)
+                .unwrap()
+                .send()
+                .await
+                .unwrap();
+            let result = RegisterResponse::from_response(response).await;
+            log::info!("Result: {:?}", result);
+            Ok(LoginState::LoggedOut)
+        });
+        self.login_promise = Some(promise);
+    }
+
     fn check_login_promise(&mut self) {
         if let Some(promise) = &self.login_promise {
             if let Some(result) = promise.ready() {
@@ -297,6 +335,11 @@ impl LoginApp {
             ui.vertical(|ui| {
                 if ui.button("Login").clicked() {
                     self.submit = Some(AuthRequest::Login);
+                }
+            });
+            ui.vertical(|ui| {
+                if ui.button("Forgot Password").clicked() {
+                    self.submit_forgot_password();
                 }
             });
             ui.separator();

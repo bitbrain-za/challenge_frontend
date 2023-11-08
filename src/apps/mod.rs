@@ -7,6 +7,8 @@ pub mod login_app;
 pub use login_app::LoginApp;
 pub mod binary_upload;
 pub mod code_editor;
+mod password_reset_app;
+pub use password_reset_app::PasswordResetApp;
 
 /// Something to view in the demo windows
 pub trait View {

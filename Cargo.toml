@@ -1,6 +1,6 @@
 [package]
 name = "challenge_frontend"
-version = "0.5.8"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.71"
 authors = ["Philip Barlow"]
