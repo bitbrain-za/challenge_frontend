@@ -4,13 +4,13 @@ use std::fmt::{self, Display, Formatter};
     Debug, Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize,
 )]
 pub enum Languages {
-    #[default]
     C,
     Cpp,
     CSharp,
     Go,
     Java,
     JavaScript,
+    #[default]
     Python,
     Rust,
     ShellScript,
