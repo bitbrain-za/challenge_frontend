@@ -112,8 +112,8 @@ impl Default for LoginApp {
             register_promise: Default::default(),
             url,
             login: LoginSchema {
-                email: "admin@admin.com".to_string(),
-                password: "password123".to_string(),
+                email: "".to_string(),
+                password: "".to_string(),
             },
             token: None,
             username: "".to_string(),
