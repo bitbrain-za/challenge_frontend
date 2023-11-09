@@ -285,6 +285,9 @@ impl LoginApp {
                     self.toasts
                         .info("Registered successfully! Please login.")
                         .set_duration(Some(Duration::from_secs(5)));
+                    self.toasts
+                        .info("Please check your junk folder for the registration email.")
+                        .set_duration(Some(Duration::from_secs(5)));
                 } else {
                     self.toasts
                         .error("Failed to register!")
