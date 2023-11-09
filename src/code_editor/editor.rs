@@ -1,5 +1,6 @@
 use crate::helpers::{submission::Submission, Challenges, Languages};
 use egui::*;
+use egui_commonmark::*;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct CodeEditor {
@@ -7,15 +8,18 @@ pub struct CodeEditor {
     show_instructions: bool,
     run: Submission,
     theme: egui_extras::syntax_highlighting::CodeTheme,
+    #[serde(skip)]
+    instructions: String,
 }
 
 impl Default for CodeEditor {
     fn default() -> Self {
         Self {
             code: DEFAULT_CODE.trim().to_owned(),
-            show_instructions: false,
+            show_instructions: true,
             run: Default::default(),
             theme: egui_extras::syntax_highlighting::CodeTheme::default(),
+            instructions: "No Challenge Loaded".into(),
         }
     }
 }
@@ -90,7 +94,7 @@ impl CodeEditor {
                     .show(&mut columns[0], |ui| self.editor_ui(ui));
                 ScrollArea::vertical()
                     .id_source("rendered")
-                    .show(&mut columns[1], |_ui| {});
+                    .show(&mut columns[1], |ui| self.instructions_ui(ui));
             });
         } else {
             ScrollArea::vertical()
@@ -120,6 +124,11 @@ impl CodeEditor {
                 .desired_width(f32::INFINITY)
                 .layouter(&mut layouter),
         );
+    }
+
+    fn instructions_ui(&mut self, ui: &mut egui::Ui) {
+        let mut cache = CommonMarkCache::default();
+        CommonMarkViewer::new("viewer").show(ui, &mut cache, &self.instructions);
     }
 }
 
