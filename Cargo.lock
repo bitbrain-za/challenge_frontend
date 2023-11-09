@@ -543,7 +543,7 @@ dependencies = [
 
 [[package]]
 name = "challenge_frontend"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "eframe",
  "egui",

@@ -82,7 +82,7 @@ impl Display for SubmissionResult {
         match self {
             SubmissionResult::NotStarted => write!(f, ""),
             SubmissionResult::Success { score: _, message } => {
-                write!(f, "Success! {}", message)
+                write!(f, "{}", message)
             }
             SubmissionResult::Failure { message } => write!(f, "Failure: {}", message),
             SubmissionResult::NotAuthorized => write!(f, "Not authorized"),
