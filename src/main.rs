@@ -18,7 +18,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "my app",
         native_options,
-        Box::new(|cc| Box::new(challenge_frontend::CodeChallengeApp::new(cc))),
+        Box::new(|cc| Box::new(challenge_frontend::WrapApp::new(cc))),
     )
 }
 
@@ -36,7 +36,7 @@ fn main() {
             .start(
                 "the_canvas_id", // hardcode it
                 web_options,
-                Box::new(|cc| Box::new(challenge_frontend::CodeChallengeApp::new(cc))),
+                Box::new(|cc| Box::new(challenge_frontend::WrapApp::new(cc))),
             )
             .await
             .expect("failed to start eframe");
