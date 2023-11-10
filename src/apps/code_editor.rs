@@ -209,12 +209,26 @@ impl super::View for CodeEditor {
                 if ui.button("Submit").clicked() {
                     log::debug!("Submitting code");
                     self.as_submission();
-                    self.submit = true;
+                    match self.run.validate() {
+                        Ok(_) => {
+                            self.submit = true;
+                        }
+                        Err(e) => {
+                            self.last_result = SubmissionResult::Failure { message: e };
+                        }
+                    }
                 }
                 if ui.button("Test").clicked() {
                     log::debug!("Testing code");
                     self.as_test_submission();
-                    self.submit = true;
+                    match self.run.validate() {
+                        Ok(_) => {
+                            self.submit = true;
+                        }
+                        Err(e) => {
+                            self.last_result = SubmissionResult::Failure { message: e };
+                        }
+                    }
                 }
             });
             ui.separator();

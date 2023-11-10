@@ -189,7 +189,14 @@ impl super::View for BinaryUpload {
         if "Select Binary" != &self.run.filename {
             ui.separator();
             if ui.button("Submit").clicked() {
-                self.submit = true;
+                match self.run.validate() {
+                    Ok(_) => {
+                        self.submit = true;
+                    }
+                    Err(e) => {
+                        self.last_result = SubmissionResult::Failure { message: e };
+                    }
+                }
             }
         }
     }
