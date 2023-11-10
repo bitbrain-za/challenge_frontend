@@ -33,6 +33,12 @@ pub struct CodeEditor {
     toasts: Toasts,
     #[serde(skip)]
     token_refresh_promise: refresh::RefreshPromise,
+    #[serde(skip)]
+    active_challenge: Challenges,
+    #[serde(skip)]
+    selected_challenge: Challenges,
+    #[serde(skip)]
+    info_promise: Option<Promise<Result<String, String>>>,
 }
 
 impl Default for CodeEditor {
@@ -53,6 +59,9 @@ impl Default for CodeEditor {
             last_result: SubmissionResult::NotStarted,
             toasts: Toasts::default(),
             token_refresh_promise: None,
+            info_promise: None,
+            active_challenge: Challenges::None,
+            selected_challenge: Challenges::default(),
         }
     }
 }
@@ -101,10 +110,49 @@ impl CodeEditor {
 
         self.promise = Some(promise);
     }
+    fn fetch(&mut self, ctx: &egui::Context) {
+        if self.active_challenge == self.selected_challenge {
+            return;
+        }
+        self.active_challenge = self.selected_challenge;
+
+        let url = self.selected_challenge.get_info_url();
+        let ctx = ctx.clone();
+
+        let promise = poll_promise::Promise::spawn_local(async move {
+            let response = http::Request::get(&url);
+            let response = response.send().await.unwrap();
+            let text = response.text().await.map_err(|e| format!("{:?}", e));
+            ctx.request_repaint(); // wake up UI thread
+            text
+        });
+        self.info_promise = Some(promise);
+    }
+
+    fn check_info_promise(&mut self) {
+        if let Some(promise) = &self.info_promise {
+            if let Some(result) = promise.ready() {
+                match result {
+                    Ok(text) => {
+                        self.instructions = text.into();
+                    }
+                    Err(err) => {
+                        self.toasts
+                            .error(format!("Error fetching challenge info: {}", err))
+                            .set_duration(Some(Duration::from_secs(5)));
+
+                        log::error!("Error fetching file: {}", err);
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl CodeEditor {
     pub fn panels(&mut self, ctx: &egui::Context) {
+        self.fetch(ctx);
+        self.check_info_promise();
         match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
             refresh::RefreshStatus::InProgress => {}
             refresh::RefreshStatus::Success => {
@@ -131,6 +179,7 @@ impl CodeEditor {
                 self.last_result = submission;
             }
         }
+        self.toasts.show(ctx);
 
         egui::TopBottomPanel::bottom("code_editor_bottom").show(ctx, |_ui| {
             let _layout = egui::Layout::top_down(egui::Align::Center).with_main_justify(true);
@@ -152,21 +201,19 @@ impl CodeEditor {
                         self.theme.ui(ui);
                     });
                 });
-                //TODO REMOVE
-                ui.label(self.label.clone());
             });
             ui.end_row();
 
             ui.horizontal(|ui| {
                 egui::ComboBox::from_label("Challenge")
-                    .selected_text(format!("{}", self.run.challenge))
+                    .selected_text(format!("{}", self.selected_challenge))
                     .show_ui(ui, |ui| {
                         ui.style_mut().wrap = Some(false);
                         ui.set_min_width(60.0);
 
                         for challenge in Challenges::iter() {
                             ui.selectable_value(
-                                &mut self.run.challenge,
+                                &mut self.selected_challenge,
                                 challenge,
                                 format!("{}", challenge),
                             );
@@ -199,6 +246,8 @@ impl CodeEditor {
                 if ui.button("Submit").clicked() {
                     log::debug!("Submitting code");
                     self.run.test = false;
+                    self.run.code = Some(self.code.clone());
+                    self.run.challenge = self.selected_challenge;
                     match self.run.validate() {
                         Ok(_) => {
                             self.submit = true;
@@ -212,10 +261,12 @@ impl CodeEditor {
                     }
                 }
                 if ui.button("Test").clicked() {
-                    log::debug!("Testing code");
                     self.run.test = true;
+                    self.run.code = Some(self.code.clone());
+                    self.run.challenge = self.selected_challenge;
                     match self.run.validate() {
                         Ok(_) => {
+                            log::debug!("Testing code");
                             self.submit = true;
                         }
                         Err(e) => {
@@ -223,6 +274,7 @@ impl CodeEditor {
                                 .error(format!("Invalid Submission: {}", e))
                                 .set_duration(Some(Duration::from_secs(5)));
 
+                            log::error!("Validation Error: {}", e);
                             self.last_result = SubmissionResult::Failure { message: e };
                         }
                     }
