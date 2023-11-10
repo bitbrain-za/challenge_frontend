@@ -10,6 +10,7 @@ pub struct CodeEditor {
     theme: egui_extras::syntax_highlighting::CodeTheme,
     #[serde(skip)]
     instructions: String,
+    label: String,
 }
 
 impl Default for CodeEditor {
@@ -20,13 +21,14 @@ impl Default for CodeEditor {
             run: Default::default(),
             theme: egui_extras::syntax_highlighting::CodeTheme::default(),
             instructions: "No Challenge Loaded".into(),
+            label: "Code Editor".into(),
         }
     }
 }
 
 impl CodeEditor {
     pub fn panels(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::bottom("easy_mark_bottom").show(ctx, |_ui| {
+        egui::TopBottomPanel::bottom("code_editor_bottom").show(ctx, |_ui| {
             let _layout = egui::Layout::top_down(egui::Align::Center).with_main_justify(true);
         });
 
@@ -36,56 +38,71 @@ impl CodeEditor {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        egui::Grid::new("controls").show(ui, |ui| {
-            let _ = ui.button("Hotkeys").on_hover_ui(nested_hotkeys_ui);
-            ui.checkbox(&mut self.show_instructions, "Show Instructions");
-
-            if ui.button("Submit").clicked() {
-                log::debug!("Submitting code");
-                todo!();
-            }
-            if ui.button("Test").clicked() {
-                log::debug!("Testing code");
-                todo!();
-            }
-            egui::ComboBox::from_label("Challenge")
-                .selected_text(format!("{}", self.run.challenge))
-                .show_ui(ui, |ui| {
-                    ui.style_mut().wrap = Some(false);
-                    ui.set_min_width(60.0);
-
-                    for challenge in Challenges::iter() {
-                        ui.selectable_value(
-                            &mut self.run.challenge,
-                            challenge,
-                            format!("{}", challenge),
-                        );
-                    }
-                });
+        ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                ui.set_height(0.0);
+                let _ = ui.button("Hotkeys").on_hover_ui(nested_hotkeys_ui);
+                ui.checkbox(&mut self.show_instructions, "Show Instructions");
 
-                ui.label("Filename:");
-                ui.add(egui::widgets::text_edit::TextEdit::singleline(
-                    &mut self.run.filename,
-                ))
-                .on_hover_text("What would you like this to be called on the scoreboard?");
-            });
-            ui.horizontal(|ui| {
-                ui.label("Language:");
-
-                for l in Languages::iter() {
-                    ui.selectable_value(&mut self.run.language, l, format!("{}", l));
-                }
-            });
-            ui.collapsing("Theme", |ui| {
-                ui.group(|ui| {
-                    self.theme.ui(ui);
+                ui.collapsing("Theme", |ui| {
+                    ui.group(|ui| {
+                        self.theme.ui(ui);
+                    });
                 });
+                //TODO REMOVE
+                ui.label(self.label.clone());
             });
             ui.end_row();
+
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_label("Challenge")
+                    .selected_text(format!("{}", self.run.challenge))
+                    .show_ui(ui, |ui| {
+                        ui.style_mut().wrap = Some(false);
+                        ui.set_min_width(60.0);
+
+                        for challenge in Challenges::iter() {
+                            ui.selectable_value(
+                                &mut self.run.challenge,
+                                challenge,
+                                format!("{}", challenge),
+                            );
+                        }
+                    });
+
+                ui.separator();
+
+                egui::ComboBox::from_label("Language")
+                    .selected_text(format!("{}", self.run.language))
+                    .show_ui(ui, |ui| {
+                        for l in Languages::iter() {
+                            ui.selectable_value(&mut self.run.language, l, format!("{}", l));
+                        }
+                    });
+            });
+
+            ui.horizontal(|ui| {
+                ui.horizontal(|ui| {
+                    ui.set_height(0.0);
+
+                    ui.label("Filename:");
+                    ui.add(
+                        egui::widgets::text_edit::TextEdit::singleline(&mut self.run.filename)
+                            .char_limit(32),
+                    )
+                    .on_hover_text("What would you like this to be called on the scoreboard?");
+                });
+                ui.separator();
+                if ui.button("Submit").clicked() {
+                    log::debug!("Submitting code");
+                    todo!();
+                }
+                if ui.button("Test").clicked() {
+                    log::debug!("Testing code");
+                    todo!();
+                }
+            });
+            ui.separator();
         });
-        ui.separator();
 
         if self.show_instructions {
             ui.columns(2, |columns| {

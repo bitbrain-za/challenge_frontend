@@ -66,6 +66,25 @@ impl Submission {
         }
         result
     }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.challenge == Challenges::None {
+            return Err("Challenge not selected".to_string());
+        }
+        if self.filename.is_empty() {
+            return Err("Filename not specified".to_string());
+        }
+        if self.code.is_none() && self.binary.is_none() {
+            return Err("Code not specified".to_string());
+        }
+
+        let rx = regex::Regex::new(r"^[a-zA-Z0-9_\-\.]+$").unwrap();
+        if !rx.is_match(&self.filename) {
+            return Err("Filename contains invalid characters".to_string());
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
