@@ -1,6 +1,15 @@
-use crate::helpers::{submission::Submission, Challenges, Languages};
+use crate::helpers::{
+    refresh,
+    submission::{Submission, SubmissionPromise, SubmissionResult},
+    Challenges, Languages,
+};
 use egui::*;
 use egui_commonmark::*;
+use egui_notify::Toasts;
+use gloo_net::http;
+use poll_promise::Promise;
+use std::time::Duration;
+use web_sys::RequestCredentials;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct CodeEditor {
@@ -11,6 +20,19 @@ pub struct CodeEditor {
     #[serde(skip)]
     instructions: String,
     label: String,
+
+    #[serde(skip)]
+    url: String,
+    #[serde(skip)]
+    promise: SubmissionPromise,
+    #[serde(skip)]
+    last_result: SubmissionResult,
+    #[serde(skip)]
+    submit: bool,
+    #[serde(skip)]
+    toasts: Toasts,
+    #[serde(skip)]
+    token_refresh_promise: refresh::RefreshPromise,
 }
 
 impl Default for CodeEditor {
@@ -22,12 +44,94 @@ impl Default for CodeEditor {
             theme: egui_extras::syntax_highlighting::CodeTheme::default(),
             instructions: "No Challenge Loaded".into(),
             label: "Code Editor".into(),
+
+            promise: Default::default(),
+            url: option_env!("BACKEND_URL")
+                .unwrap_or("http://123.4.5.6:3000/")
+                .to_string(),
+            submit: false,
+            last_result: SubmissionResult::NotStarted,
+            toasts: Toasts::default(),
+            token_refresh_promise: None,
         }
     }
 }
 
 impl CodeEditor {
+    fn submit(&mut self, ctx: &egui::Context) {
+        if !self.submit {
+            return;
+        }
+        self.submit = false;
+        let submission = self.run.clone();
+
+        let url = format!("{}api/game/submit", self.url);
+        log::debug!("Sending to {}", url);
+        let ctx = ctx.clone();
+
+        let promise = Promise::spawn_local(async move {
+            let response = http::Request::post(&url)
+                .credentials(RequestCredentials::Include)
+                .json(&submission)
+                .unwrap()
+                .send()
+                .await
+                .unwrap();
+
+            let result: SubmissionResult = match response.status() {
+                200 => response.json().await.unwrap(),
+                401 => {
+                    let text = response.text().await;
+                    let text = text.map(|text| text.to_owned());
+                    let text = match text {
+                        Ok(text) => text,
+                        Err(e) => e.to_string(),
+                    };
+                    log::warn!("Auth Error: {:?}", text);
+                    SubmissionResult::NotAuthorized
+                }
+                _ => {
+                    return Err(format!("Failed to submit code: {:?}", response));
+                }
+            };
+
+            ctx.request_repaint(); // wake up UI thread
+            Ok(result)
+        });
+
+        self.promise = Some(promise);
+    }
+}
+
+impl CodeEditor {
     pub fn panels(&mut self, ctx: &egui::Context) {
+        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
+            refresh::RefreshStatus::InProgress => {}
+            refresh::RefreshStatus::Success => {
+                self.submit = true;
+            }
+            refresh::RefreshStatus::Failed(_) => {}
+            _ => (),
+        }
+
+        self.submit(ctx);
+        let submission = Submission::check_submit_promise(&mut self.promise);
+        match submission {
+            SubmissionResult::NotStarted => {}
+            SubmissionResult::NotAuthorized => {
+                self.token_refresh_promise = refresh::submit_refresh(&self.url);
+                self.last_result = submission;
+            }
+            SubmissionResult::Success { score: _, message } => {
+                self.toasts
+                    .info(format!("Result: {}", message))
+                    .set_duration(Some(Duration::from_secs(5)));
+            }
+            _ => {
+                self.last_result = submission;
+            }
+        }
+
         egui::TopBottomPanel::bottom("code_editor_bottom").show(ctx, |_ui| {
             let _layout = egui::Layout::top_down(egui::Align::Center).with_main_justify(true);
         });
@@ -94,11 +198,34 @@ impl CodeEditor {
                 ui.separator();
                 if ui.button("Submit").clicked() {
                     log::debug!("Submitting code");
-                    todo!();
+                    self.run.test = false;
+                    match self.run.validate() {
+                        Ok(_) => {
+                            self.submit = true;
+                        }
+                        Err(e) => {
+                            self.toasts
+                                .error(format!("Invalid Submission: {}", e))
+                                .set_duration(Some(Duration::from_secs(5)));
+                            self.last_result = SubmissionResult::Failure { message: e };
+                        }
+                    }
                 }
                 if ui.button("Test").clicked() {
                     log::debug!("Testing code");
-                    todo!();
+                    self.run.test = true;
+                    match self.run.validate() {
+                        Ok(_) => {
+                            self.submit = true;
+                        }
+                        Err(e) => {
+                            self.toasts
+                                .error(format!("Invalid Submission: {}", e))
+                                .set_duration(Some(Duration::from_secs(5)));
+
+                            self.last_result = SubmissionResult::Failure { message: e };
+                        }
+                    }
                 }
             });
             ui.separator();
