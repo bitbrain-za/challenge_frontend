@@ -4,9 +4,17 @@
 
 # Challenge Frontend
 
-This is the frontend for an in house game.
+This is the frontend for an in house code kata server.
 
-[Test Deployment](https://bitbrain-za.github.io/challenge_frontend/)
+The [test Deployment](https://bitbrain-za.github.io/challenge_frontend/) is currently not useable as the backend will not be discoverable.
+
+## Usage
+
+In order to deploy this there are two other repos you will need:
+
+The [backend] (https://github.com/bitbrain-za/challenge-backend) and the [tool](https://github.com/bitbrain-za/judge) for evaluating submissions.
+
+This web assembly talks to the backend which will then call the tool.
 
 ### Testing locally
 
