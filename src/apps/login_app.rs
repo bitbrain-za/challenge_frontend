@@ -107,7 +107,7 @@ impl Default for LoginApp {
             .unwrap_or("http://localhost:3000/")
             .to_string();
         Self {
-            token_refresh_promise: refresh::submit_refresh(&url),
+            token_refresh_promise: refresh::submit_refresh(),
             login_promise: Default::default(),
             register_promise: Default::default(),
             url,
@@ -261,7 +261,7 @@ impl LoginApp {
                     }
                     Ok(LoginState::Expired) => {
                         self.state = LoginState::Expired;
-                        self.token_refresh_promise = refresh::submit_refresh(&self.url);
+                        self.token_refresh_promise = refresh::submit_refresh();
                     }
                     Err(e) => {
                         self.toasts

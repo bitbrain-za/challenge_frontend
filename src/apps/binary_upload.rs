@@ -130,7 +130,7 @@ impl super::App for BinaryUpload {
         match submission {
             SubmissionResult::NotStarted => {}
             SubmissionResult::NotAuthorized => {
-                self.token_refresh_promise = refresh::submit_refresh(&self.url);
+                self.token_refresh_promise = refresh::submit_refresh();
                 self.last_result = submission;
             }
             _ => {

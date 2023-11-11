@@ -1,3 +1,4 @@
+use crate::helpers::refresh;
 use gloo_net::http;
 use poll_promise::Promise;
 use web_sys::RequestCredentials;
@@ -33,6 +34,7 @@ pub struct Getter {
     url: String,
     retry_count: usize,
     state_has_changed: bool,
+    token_refresh_promise: refresh::RefreshPromise,
 }
 
 impl Getter {
@@ -46,10 +48,25 @@ impl Getter {
                 false => 0,
             },
             state_has_changed: false,
+            token_refresh_promise: None,
         }
     }
 
     pub fn check_promise(&mut self) -> GetStatus {
+        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
+            refresh::RefreshStatus::NotStarted => {}
+            refresh::RefreshStatus::InProgress => {}
+            refresh::RefreshStatus::Success => {
+                log::debug!("Retrying Request");
+                self.get();
+                return GetStatus::InProgress;
+            }
+            refresh::RefreshStatus::Failed(_) => {
+                self.state_has_changed = true;
+                return GetStatus::Failed("Failed to authenticate".to_string());
+            }
+        }
+
         let mut res = GetStatus::NotStarted;
         if let Some(promise) = &self.promise {
             res = match promise.ready() {
@@ -58,8 +75,10 @@ impl Getter {
                     Ok(FetchResponse::Failure(e)) => GetStatus::Failed(e.to_string()),
                     Ok(FetchResponse::FailAuth) => {
                         if self.retry_count > 0 {
+                            log::debug!("Retrying auth");
                             self.retry_count -= 1;
-                            self.get();
+                            self.promise = None;
+                            self.token_refresh_promise = refresh::submit_refresh();
                             GetStatus::InProgress
                         } else {
                             GetStatus::Failed("Authentication failed".to_string())
@@ -115,24 +134,3 @@ impl Getter {
         self.promise = Some(promise);
     }
 }
-
-// impl<T: Clone + DeserializeOwned + Sync + Send> Getter<T> {
-//     pub fn _get_json(&mut self) {
-//         let url = self.url.clone();
-//         let ctx = self.context.clone();
-//         let with_credentials = self.with_credentials;
-//         let promise = Promise::spawn_local(async move {
-//             let request = http::Request::get(&url);
-//             let request = match with_credentials {
-//                 true => request.credentials(RequestCredentials::Include),
-//                 false => request,
-//             };
-//             let response = request.send().await.map_err(|e| e.to_string())?;
-//             if let Some(ctx) = ctx {
-//                 ctx.request_repaint(); // wake up UI thread
-//             }
-//             response.json::<T>().await.map_err(|e| e.to_string())
-//         });
-//         self.promise = Some(promise);
-//     }
-// }
