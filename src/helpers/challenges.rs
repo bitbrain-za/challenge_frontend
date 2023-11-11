@@ -5,8 +5,8 @@ use std::fmt::{self, Display, Formatter};
     Debug, Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize,
 )]
 pub enum Challenges {
-    #[default]
     C2331,
+    #[default]
     C2332,
     C2333,
     None,

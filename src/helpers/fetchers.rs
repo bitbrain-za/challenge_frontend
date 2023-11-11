@@ -79,7 +79,7 @@ impl Getter<String> {
 }
 
 impl<T: Clone + DeserializeOwned + Sync + Send> Getter<T> {
-    pub fn get_json(&mut self) {
+    pub fn _get_json(&mut self) {
         let url = self.url.clone();
         let ctx = self.context.clone();
         let with_credentials = self.with_credentials;
