@@ -12,10 +12,22 @@ pub enum GetStatus<T: Clone + Sync + Send> {
 }
 
 pub struct Getter<T: Clone + Sync + Send + 'static> {
-    pub promise: Option<Promise<Result<T, String>>>,
+    promise: Option<Promise<Result<T, String>>>,
+    with_credentials: bool,
+    context: Option<egui::Context>,
+    url: String,
 }
 
 impl<T: Clone + Sync + Send> Getter<T> {
+    pub fn new(url: &str, ctx: Option<&egui::Context>, with_credentials: bool) -> Self {
+        Self {
+            url: url.to_string(),
+            promise: None,
+            with_credentials,
+            context: ctx.cloned(),
+        }
+    }
+
     pub fn check_promise(&mut self) -> GetStatus<T> {
         let mut res = GetStatus::<T>::NotStarted;
         if let Some(promise) = &self.promise {
@@ -29,17 +41,20 @@ impl<T: Clone + Sync + Send> Getter<T> {
         }
         res
     }
-    pub fn get(
-        &mut self,
-        url: &'static str,
-        ctx: Option<&'static egui::Context>,
-    ) -> Promise<Result<String, String>> {
-        Promise::spawn_local(async move {
-            let response = http::Request::get(url)
-                .credentials(RequestCredentials::Include)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
+}
+
+impl Getter<String> {
+    pub fn get(&mut self) {
+        let url = self.url.clone();
+        let ctx = self.context.clone();
+        let with_credentials = self.with_credentials;
+        let promise = Promise::spawn_local(async move {
+            let request = http::Request::get(&url);
+            let request = match with_credentials {
+                true => request.credentials(RequestCredentials::Include),
+                false => request,
+            };
+            let response = request.send().await.map_err(|e| e.to_string())?;
             if let Some(ctx) = ctx {
                 ctx.request_repaint(); // wake up UI thread
             }
@@ -47,26 +62,28 @@ impl<T: Clone + Sync + Send> Getter<T> {
                 Ok(text) => Ok(text),
                 Err(e) => Err(e.to_string()),
             }
-        })
+        });
+        self.promise = Some(promise);
     }
 }
 
 impl<T: Clone + DeserializeOwned + Sync + Send> Getter<T> {
-    pub fn get_json(
-        &mut self,
-        url: &'static str,
-        ctx: Option<&'static egui::Context>,
-    ) -> Promise<Result<T, String>> {
-        Promise::spawn_local(async move {
-            let response = http::Request::get(url)
-                .credentials(RequestCredentials::Include)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
+    pub fn get_json(&mut self) {
+        let url = self.url.clone();
+        let ctx = self.context.clone();
+        let with_credentials = self.with_credentials;
+        let promise = Promise::spawn_local(async move {
+            let request = http::Request::get(&url);
+            let request = match with_credentials {
+                true => request.credentials(RequestCredentials::Include),
+                false => request,
+            };
+            let response = request.send().await.map_err(|e| e.to_string())?;
             if let Some(ctx) = ctx {
                 ctx.request_repaint(); // wake up UI thread
             }
             response.json::<T>().await.map_err(|e| e.to_string())
-        })
+        });
+        self.promise = Some(promise);
     }
 }

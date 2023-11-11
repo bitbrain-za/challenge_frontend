@@ -1,4 +1,5 @@
 use crate::helpers::{
+    fetchers::{GetStatus, Getter},
     refresh,
     submission::{Submission, SubmissionPromise, SubmissionResult},
     Challenges, Languages,
@@ -37,8 +38,9 @@ pub struct CodeEditor {
     active_challenge: Challenges,
     #[serde(skip)]
     selected_challenge: Challenges,
+
     #[serde(skip)]
-    info_promise: Option<Promise<Result<String, String>>>,
+    info_fetcher: Option<Getter<String>>,
 }
 
 impl Default for CodeEditor {
@@ -59,7 +61,7 @@ impl Default for CodeEditor {
             last_result: SubmissionResult::NotStarted,
             toasts: Toasts::default(),
             token_refresh_promise: None,
-            info_promise: None,
+            info_fetcher: None,
             active_challenge: Challenges::None,
             selected_challenge: Challenges::default(),
         }
@@ -110,39 +112,32 @@ impl CodeEditor {
 
         self.promise = Some(promise);
     }
+
     fn fetch(&mut self, ctx: &egui::Context) {
         if self.active_challenge == self.selected_challenge {
             return;
         }
+        log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
-
-        let url = self.selected_challenge.get_info_url();
-        let ctx = ctx.clone();
-
-        let promise = poll_promise::Promise::spawn_local(async move {
-            let response = http::Request::get(&url);
-            let response = response.send().await.unwrap();
-            let text = response.text().await.map_err(|e| format!("{:?}", e));
-            ctx.request_repaint(); // wake up UI thread
-            text
-        });
-        self.info_promise = Some(promise);
+        self.info_fetcher = self.selected_challenge.fetcher(Some(ctx));
     }
 
     fn check_info_promise(&mut self) {
-        if let Some(promise) = &self.info_promise {
-            if let Some(result) = promise.ready() {
-                match result {
-                    Ok(text) => {
-                        self.instructions = text.into();
-                    }
-                    Err(err) => {
-                        self.toasts
-                            .error(format!("Error fetching challenge info: {}", err))
-                            .set_duration(Some(Duration::from_secs(5)));
+        let getter = &mut self.info_fetcher;
 
-                        log::error!("Error fetching file: {}", err);
-                    }
+        if let Some(getter) = getter {
+            match &getter.check_promise() {
+                GetStatus::NotStarted => {}
+                GetStatus::InProgress => {}
+                GetStatus::Success(text) => {
+                    self.instructions = text.clone();
+                }
+                GetStatus::Failed(err) => {
+                    self.toasts
+                        .error(format!("Error fetching challenge info: {}", err))
+                        .set_duration(Some(Duration::from_secs(5)));
+
+                    log::error!("Error fetching file: {}", err);
                 }
             }
         }

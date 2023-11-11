@@ -1,3 +1,4 @@
+use super::fetchers::{GetStatus, Getter};
 use std::fmt::{self, Display, Formatter};
 
 #[derive(
@@ -32,6 +33,18 @@ impl Challenges {
             Challenges::C2332 => "https://raw.githubusercontent.com/bitbrain-za/judge_2331-rs/main/src/generator/2332.md".to_string(),
             Challenges::C2333 => "https://raw.githubusercontent.com/bitbrain-za/judge_2331-rs/main/src/generator/2333.md".to_string(),
             Challenges::None => "".to_string(),
+        }
+    }
+
+    pub fn fetcher(&self, context: Option<&egui::Context>) -> Option<Getter<String>> {
+        match self {
+            Challenges::None => None,
+            _ => {
+                let mut getter = Getter::<String>::new(&self.get_info_url(), context, false);
+                getter.get();
+
+                Some(getter)
+            }
         }
     }
 }
