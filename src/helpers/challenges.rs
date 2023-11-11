@@ -1,4 +1,4 @@
-use super::fetchers::Getter;
+use super::fetchers::Requestor;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(
@@ -36,12 +36,12 @@ impl Challenges {
         }
     }
 
-    pub fn fetcher(&self) -> Option<Getter> {
+    pub fn fetcher(&self) -> Option<Requestor> {
         match self {
             Challenges::None => None,
             _ => {
-                let mut getter = Getter::new(&self.get_info_url(), false);
-                getter.get();
+                let mut getter = Requestor::new_get(&self.get_info_url(), false);
+                getter.send();
                 Some(getter)
             }
         }

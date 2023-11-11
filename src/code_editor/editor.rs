@@ -1,16 +1,12 @@
 use crate::helpers::{
-    fetchers::{GetStatus, Getter},
-    refresh,
-    submission::{Submission, SubmissionPromise, SubmissionResult},
+    fetchers::{GetStatus, Requestor},
+    submission::{Submission, SubmissionResult},
     Challenges, Languages,
 };
 use egui::*;
 use egui_commonmark::*;
 use egui_notify::Toasts;
-use gloo_net::http;
-use poll_promise::Promise;
 use std::{borrow::BorrowMut, time::Duration};
-use web_sys::RequestCredentials;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct CodeEditor {
@@ -25,22 +21,18 @@ pub struct CodeEditor {
     #[serde(skip)]
     url: String,
     #[serde(skip)]
-    promise: SubmissionPromise,
-    #[serde(skip)]
     last_result: SubmissionResult,
     #[serde(skip)]
-    submit: bool,
-    #[serde(skip)]
     toasts: Toasts,
-    #[serde(skip)]
-    token_refresh_promise: refresh::RefreshPromise,
     #[serde(skip)]
     active_challenge: Challenges,
     #[serde(skip)]
     selected_challenge: Challenges,
 
     #[serde(skip)]
-    info_fetcher: Option<Getter>,
+    info_fetcher: Option<Requestor>,
+    #[serde(skip)]
+    submitter: Option<Requestor>,
 }
 
 impl Default for CodeEditor {
@@ -53,14 +45,12 @@ impl Default for CodeEditor {
             instructions: "No Challenge Loaded".into(),
             label: "Code Editor".into(),
 
-            promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
-            submit: false,
             last_result: SubmissionResult::NotStarted,
             toasts: Toasts::default(),
-            token_refresh_promise: None,
+            submitter: None,
             info_fetcher: None,
             active_challenge: Challenges::None,
             selected_challenge: Challenges::default(),
@@ -69,48 +59,10 @@ impl Default for CodeEditor {
 }
 
 impl CodeEditor {
-    fn submit(&mut self, ctx: &egui::Context) {
-        if !self.submit {
-            return;
-        }
-        self.submit = false;
+    fn submit(&mut self) {
         let submission = self.run.clone();
-
         let url = format!("{}api/game/submit", self.url);
-        log::debug!("Sending to {}", url);
-        let ctx = ctx.clone();
-
-        let promise = Promise::spawn_local(async move {
-            let response = http::Request::post(&url)
-                .credentials(RequestCredentials::Include)
-                .json(&submission)
-                .unwrap()
-                .send()
-                .await
-                .unwrap();
-
-            let result: SubmissionResult = match response.status() {
-                200 => response.json().await.unwrap(),
-                401 => {
-                    let text = response.text().await;
-                    let text = text.map(|text| text.to_owned());
-                    let text = match text {
-                        Ok(text) => text,
-                        Err(e) => e.to_string(),
-                    };
-                    log::warn!("Auth Error: {:?}", text);
-                    SubmissionResult::NotAuthorized
-                }
-                _ => {
-                    return Err(format!("Failed to submit code: {:?}", response));
-                }
-            };
-
-            ctx.request_repaint(); // wake up UI thread
-            Ok(result)
-        });
-
-        self.promise = Some(promise);
+        self.submitter = submission.sender(&url);
     }
 
     fn fetch(&mut self) {
@@ -146,29 +98,12 @@ impl CodeEditor {
 impl CodeEditor {
     pub fn panels(&mut self, ctx: &egui::Context) {
         self.fetch();
-        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
-            if fetcher.refresh_context() {
-                ctx.request_repaint();
-            }
-        }
-        self.check_info_promise();
-        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
-            refresh::RefreshStatus::InProgress => {}
-            refresh::RefreshStatus::Success => {
-                self.submit = true;
-            }
-            refresh::RefreshStatus::Failed(_) => {}
-            _ => (),
-        }
 
-        self.submit(ctx);
-        let submission = Submission::check_submit_promise(&mut self.promise);
+        self.check_info_promise();
+
+        let submission = Submission::check_sender(&mut self.submitter);
         match submission {
             SubmissionResult::NotStarted => {}
-            SubmissionResult::NotAuthorized => {
-                self.token_refresh_promise = refresh::submit_refresh();
-                self.last_result = submission;
-            }
             SubmissionResult::Success { score: _, message } => {
                 self.toasts
                     .info(format!("Result: {}", message))
@@ -176,6 +111,12 @@ impl CodeEditor {
             }
             _ => {
                 self.last_result = submission;
+            }
+        }
+
+        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
+            if fetcher.refresh_context() {
+                ctx.request_repaint();
             }
         }
         self.toasts.show(ctx);
@@ -249,7 +190,7 @@ impl CodeEditor {
                     self.run.challenge = self.selected_challenge;
                     match self.run.validate() {
                         Ok(_) => {
-                            self.submit = true;
+                            self.submit();
                         }
                         Err(e) => {
                             self.toasts
@@ -266,7 +207,7 @@ impl CodeEditor {
                     match self.run.validate() {
                         Ok(_) => {
                             log::debug!("Testing code");
-                            self.submit = true;
+                            self.submit();
                         }
                         Err(e) => {
                             self.toasts

@@ -1,4 +1,4 @@
-use crate::helpers::{fetchers::Getter, Challenges};
+use crate::helpers::{fetchers::Requestor, Challenges};
 use egui_commonmark::*;
 use std::borrow::BorrowMut;
 
@@ -15,7 +15,7 @@ pub struct ChallengeInfoApp {
     #[serde(skip)]
     active_challenge: Challenges,
     #[serde(skip)]
-    info_fetcher: Option<Getter>,
+    info_fetcher: Option<Requestor>,
     instructions: String,
 }
 

@@ -1,5 +1,5 @@
 use crate::helpers::{
-    fetchers::{GetStatus, Getter},
+    fetchers::{GetStatus, Requestor},
     Challenges,
 };
 use scoreboard_db::Builder as FilterBuilder;
@@ -36,7 +36,7 @@ pub struct ScoreBoardApp {
     url: String,
 
     #[serde(skip)]
-    score_fetcher: Option<Getter>,
+    score_fetcher: Option<Requestor>,
 }
 
 impl Default for ScoreBoardApp {
@@ -65,8 +65,8 @@ impl ScoreBoardApp {
         let url = format!("{}api/game/scores/{}", self.url, self.challenge);
 
         log::debug!("Fetching challenge info");
-        let mut getter = Getter::new(&url, true);
-        getter.get();
+        let mut getter = Requestor::new_get(&url, true);
+        getter.send();
         self.score_fetcher = Some(getter);
     }
 
