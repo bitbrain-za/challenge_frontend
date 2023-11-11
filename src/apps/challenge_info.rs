@@ -1,5 +1,6 @@
 use crate::helpers::{fetchers::Getter, Challenges};
 use egui_commonmark::*;
+use std::borrow::BorrowMut;
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -14,7 +15,7 @@ pub struct ChallengeInfoApp {
     #[serde(skip)]
     active_challenge: Challenges,
     #[serde(skip)]
-    info_fetcher: Option<Getter<String>>,
+    info_fetcher: Option<Getter>,
     instructions: String,
 }
 
@@ -30,13 +31,13 @@ impl Default for ChallengeInfoApp {
 }
 
 impl ChallengeInfoApp {
-    fn fetch(&mut self, ctx: &egui::Context) {
+    fn fetch(&mut self) {
         if self.active_challenge == self.selected_challenge {
             return;
         }
         log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
-        self.info_fetcher = self.selected_challenge.fetcher(Some(ctx));
+        self.info_fetcher = self.selected_challenge.fetcher();
     }
     fn check_info_promise(&mut self) {
         let getter = &mut self.info_fetcher;
@@ -54,7 +55,15 @@ impl super::App for ChallengeInfoApp {
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
-        self.fetch(ctx);
+        self.fetch();
+
+        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
+            if fetcher.refresh_context() {
+                log::debug!("Refreshing context");
+                ctx.request_repaint();
+            }
+        }
+
         egui::Window::new(self.name())
             .open(open)
             .default_width(800.0)

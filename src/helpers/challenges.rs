@@ -36,11 +36,11 @@ impl Challenges {
         }
     }
 
-    pub fn fetcher(&self, context: Option<&egui::Context>) -> Option<Getter<String>> {
+    pub fn fetcher(&self) -> Option<Getter> {
         match self {
             Challenges::None => None,
             _ => {
-                let mut getter = Getter::<String>::new(&self.get_info_url(), context, false);
+                let mut getter = Getter::new(&self.get_info_url(), false);
                 getter.get();
                 Some(getter)
             }

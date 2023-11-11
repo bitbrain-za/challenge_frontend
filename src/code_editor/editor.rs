@@ -9,7 +9,7 @@ use egui_commonmark::*;
 use egui_notify::Toasts;
 use gloo_net::http;
 use poll_promise::Promise;
-use std::time::Duration;
+use std::{borrow::BorrowMut, time::Duration};
 use web_sys::RequestCredentials;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -40,7 +40,7 @@ pub struct CodeEditor {
     selected_challenge: Challenges,
 
     #[serde(skip)]
-    info_fetcher: Option<Getter<String>>,
+    info_fetcher: Option<Getter>,
 }
 
 impl Default for CodeEditor {
@@ -113,13 +113,13 @@ impl CodeEditor {
         self.promise = Some(promise);
     }
 
-    fn fetch(&mut self, ctx: &egui::Context) {
+    fn fetch(&mut self) {
         if self.active_challenge == self.selected_challenge {
             return;
         }
         log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
-        self.info_fetcher = self.selected_challenge.fetcher(Some(ctx));
+        self.info_fetcher = self.selected_challenge.fetcher();
     }
 
     fn check_info_promise(&mut self) {
@@ -145,7 +145,12 @@ impl CodeEditor {
 
 impl CodeEditor {
     pub fn panels(&mut self, ctx: &egui::Context) {
-        self.fetch(ctx);
+        self.fetch();
+        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
+            if fetcher.refresh_context() {
+                ctx.request_repaint();
+            }
+        }
         self.check_info_promise();
         match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
             refresh::RefreshStatus::InProgress => {}
