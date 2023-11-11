@@ -1,13 +1,15 @@
 use crate::{
     apps::{self},
     code_editor,
+    helpers::AppState,
 };
 #[cfg(target_arch = "wasm32")]
 use core::any::Any;
+use std::sync::{Arc, Mutex};
 
 #[derive(serde::Deserialize, serde::Serialize, Default)]
 struct CodeEditorApp {
-    editor: code_editor::CodeEditor,
+    pub editor: code_editor::CodeEditor,
 }
 
 impl eframe::App for CodeEditorApp {
@@ -20,7 +22,7 @@ impl eframe::App for CodeEditorApp {
 #[serde(default)]
 pub struct CodeChallengeApp {
     #[serde(skip)]
-    windows: apps::app_windows::AppWindows,
+    pub windows: apps::app_windows::AppWindows,
 }
 
 impl eframe::App for CodeChallengeApp {
@@ -75,21 +77,42 @@ pub struct State {
     selected_anchor: Anchor,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct WrapApp {
     state: State,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
+}
+
+impl Default for WrapApp {
+    fn default() -> Self {
+        let app_state = Arc::new(Mutex::new(AppState::default()));
+        Self {
+            state: State::default(),
+            app_state,
+        }
+    }
 }
 
 impl WrapApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        #[allow(unused_mut)]
+        let app_state = AppState::default();
+        let app_state = Arc::new(Mutex::new(app_state));
+
         let mut slf = Self {
             state: State::default(),
+            app_state: Arc::clone(&app_state),
 
             #[cfg(any(feature = "glow", feature = "wgpu"))]
             custom3d: crate::apps::Custom3d::new(cc),
         };
+
+        slf.state.code_editor.editor.app_state = Arc::clone(&app_state);
+        slf.state
+            .landing
+            .windows
+            .set_app_state_ref(Arc::clone(&app_state));
 
         if let Some(storage) = cc.storage {
             if let Some(state) = eframe::get_value(storage, eframe::APP_KEY) {

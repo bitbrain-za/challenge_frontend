@@ -1,10 +1,11 @@
 use crate::helpers::{
     fetchers::{GetStatus, Requestor},
-    Challenges,
+    AppState, Challenges,
 };
 use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::Filter as ScoreBoardFilter;
 use scoreboard_db::{NiceTime, Score, ScoreBoard, SortColumn};
+use std::sync::{Arc, Mutex};
 use std::{borrow::BorrowMut, str::FromStr};
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
@@ -37,6 +38,8 @@ pub struct ScoreBoardApp {
 
     #[serde(skip)]
     score_fetcher: Option<Requestor>,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for ScoreBoardApp {
@@ -54,6 +57,7 @@ impl Default for ScoreBoardApp {
             active_sort_column: "time".to_string(),
             scores: None,
             score_fetcher: None,
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
@@ -65,7 +69,8 @@ impl ScoreBoardApp {
         let url = format!("{}api/game/scores/{}", self.url, self.challenge);
 
         log::debug!("Fetching challenge info");
-        let mut getter = Requestor::new_get(&url, true);
+        let app_state = Arc::clone(&self.app_state);
+        let mut getter = Requestor::new_get(app_state, &url, true);
         getter.send();
         self.score_fetcher = Some(getter);
     }
@@ -107,6 +112,10 @@ impl ScoreBoardApp {
 impl super::App for ScoreBoardApp {
     fn name(&self) -> &'static str {
         "☰ Score Board"
+    }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {

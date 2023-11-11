@@ -1,5 +1,6 @@
-use super::fetchers::Requestor;
+use crate::helpers::{fetchers::Requestor, AppState};
 use std::fmt::{self, Display, Formatter};
+use std::sync::{Arc, Mutex};
 
 #[derive(
     Debug, Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize,
@@ -36,11 +37,11 @@ impl Challenges {
         }
     }
 
-    pub fn fetcher(&self) -> Option<Requestor> {
+    pub fn fetcher(&self, app_state: Arc<Mutex<AppState>>) -> Option<Requestor> {
         match self {
             Challenges::None => None,
             _ => {
-                let mut getter = Requestor::new_get(&self.get_info_url(), false);
+                let mut getter = Requestor::new_get(app_state, &self.get_info_url(), false);
                 getter.send();
                 Some(getter)
             }

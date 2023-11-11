@@ -1,11 +1,12 @@
 use crate::helpers::{
     fetchers::{GetStatus, Requestor},
     submission::{Submission, SubmissionResult},
-    Challenges, Languages,
+    AppState, Challenges, Languages,
 };
 use egui::*;
 use egui_commonmark::*;
 use egui_notify::Toasts;
+use std::sync::{Arc, Mutex};
 use std::{borrow::BorrowMut, time::Duration};
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -33,6 +34,8 @@ pub struct CodeEditor {
     info_fetcher: Option<Requestor>,
     #[serde(skip)]
     submitter: Option<Requestor>,
+    #[serde(skip)]
+    pub app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for CodeEditor {
@@ -54,6 +57,7 @@ impl Default for CodeEditor {
             info_fetcher: None,
             active_challenge: Challenges::None,
             selected_challenge: Challenges::default(),
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
@@ -62,7 +66,8 @@ impl CodeEditor {
     fn submit(&mut self) {
         let submission = self.run.clone();
         let url = format!("{}api/game/submit", self.url);
-        self.submitter = submission.sender(&url);
+        let app_state = Arc::clone(&self.app_state);
+        self.submitter = submission.sender(app_state, &url);
     }
 
     fn fetch(&mut self) {
@@ -71,7 +76,8 @@ impl CodeEditor {
         }
         log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
-        self.info_fetcher = self.selected_challenge.fetcher();
+        let app_state = Arc::clone(&self.app_state);
+        self.info_fetcher = self.selected_challenge.fetcher(app_state);
     }
 
     fn check_info_promise(&mut self) {
@@ -133,6 +139,14 @@ impl CodeEditor {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
+                //TODO remove
+                let counter = Arc::clone(&self.app_state);
+                let mut state = counter.lock().unwrap();
+                let label = format!("Count: {}", state.counter);
+                if ui.button(label).clicked() {
+                    state.counter += 1;
+                }
+
                 let _ = ui.button("Hotkeys").on_hover_ui(nested_hotkeys_ui);
                 ui.checkbox(&mut self.show_instructions, "Show Instructions");
 

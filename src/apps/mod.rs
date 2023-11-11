@@ -8,7 +8,9 @@ pub use login_app::LoginApp;
 pub mod binary_upload;
 pub mod code_editor;
 mod password_reset_app;
+use crate::helpers::AppState;
 pub use password_reset_app::PasswordResetApp;
+use std::sync::{Arc, Mutex};
 
 /// Something to view in the demo windows
 pub trait View {
@@ -22,4 +24,6 @@ pub trait App {
 
     /// Show windows, etc
     fn show(&mut self, ctx: &egui::Context, open: &mut bool);
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>);
 }

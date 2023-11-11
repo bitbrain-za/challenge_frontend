@@ -6,3 +6,6 @@ pub mod refresh;
 pub mod submission;
 
 pub mod fetchers;
+
+mod app_state;
+pub use app_state::AppState;

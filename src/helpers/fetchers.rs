@@ -1,6 +1,7 @@
-use crate::helpers::refresh;
+use crate::helpers::{refresh, AppState};
 use gloo_net::http;
 use poll_promise::Promise;
+use std::sync::{Arc, Mutex};
 use web_sys::{FormData, RequestCredentials};
 
 #[derive(Clone, Debug)]
@@ -43,21 +44,33 @@ pub struct Requestor {
     post_data: Option<String>,
     form_data: Option<FormData>,
     method: Method,
+    pub app_state: Arc<Mutex<AppState>>,
 }
 
 impl Requestor {
-    pub fn new_get(url: &str, with_credentials: bool) -> Self {
-        Self::new(url, with_credentials, None, None, Method::Get)
+    pub fn new_get(app_state: Arc<Mutex<AppState>>, url: &str, with_credentials: bool) -> Self {
+        Self::new(app_state, url, with_credentials, None, None, Method::Get)
     }
 
-    pub fn new_post(url: &str, with_credentials: bool, data: Option<String>) -> Self {
-        Self::new(url, with_credentials, data, None, Method::Post)
+    pub fn new_post(
+        app_state: Arc<Mutex<AppState>>,
+        url: &str,
+        with_credentials: bool,
+        data: Option<String>,
+    ) -> Self {
+        Self::new(app_state, url, with_credentials, data, None, Method::Post)
     }
-    pub fn new_form_post(url: &str, with_credentials: bool, data: Option<FormData>) -> Self {
-        Self::new(url, with_credentials, None, data, Method::Post)
+    pub fn new_form_post(
+        app_state: Arc<Mutex<AppState>>,
+        url: &str,
+        with_credentials: bool,
+        data: Option<FormData>,
+    ) -> Self {
+        Self::new(app_state, url, with_credentials, None, data, Method::Post)
     }
 
     fn new(
+        app_state: Arc<Mutex<AppState>>,
         url: &str,
         with_credentials: bool,
         data: Option<String>,
@@ -77,6 +90,7 @@ impl Requestor {
             post_data: data,
             form_data: form,
             method,
+            app_state,
         }
     }
 

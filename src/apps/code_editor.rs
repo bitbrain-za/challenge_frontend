@@ -1,10 +1,10 @@
-use std::borrow::BorrowMut;
-
 use crate::helpers::{
     fetchers::Requestor,
     submission::{Submission, SubmissionResult},
-    Challenges, Languages,
+    AppState, Challenges, Languages,
 };
+use std::borrow::BorrowMut;
+use std::sync::{Arc, Mutex};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -19,6 +19,8 @@ pub struct CodeEditor {
     code: String,
     #[serde(skip)]
     submitter: Option<Requestor>,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for CodeEditor {
@@ -36,6 +38,7 @@ impl Default for CodeEditor {
             code: "#A very simple example\nprint(\"Hello world!\")".into(),
             last_result: SubmissionResult::NotStarted,
             submitter: None,
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
@@ -44,7 +47,8 @@ impl CodeEditor {
     fn submit(&mut self) {
         let submission = self.run.clone();
         let url = format!("{}api/game/submit", self.url);
-        self.submitter = submission.sender(&url);
+        let app_state = Arc::clone(&self.app_state);
+        self.submitter = submission.sender(app_state, &url);
     }
 
     fn as_test_submission(&mut self) {
@@ -61,6 +65,10 @@ impl CodeEditor {
 impl super::App for CodeEditor {
     fn name(&self) -> &'static str {
         "💻 Code Editor"
+    }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {

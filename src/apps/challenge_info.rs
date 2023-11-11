@@ -1,6 +1,7 @@
-use crate::helpers::{fetchers::Requestor, Challenges};
+use crate::helpers::{fetchers::Requestor, AppState, Challenges};
 use egui_commonmark::*;
 use std::borrow::BorrowMut;
+use std::sync::{Arc, Mutex};
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -17,6 +18,8 @@ pub struct ChallengeInfoApp {
     #[serde(skip)]
     info_fetcher: Option<Requestor>,
     instructions: String,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for ChallengeInfoApp {
@@ -26,6 +29,7 @@ impl Default for ChallengeInfoApp {
             info_fetcher: None,
             active_challenge: Challenges::None,
             instructions: "None".to_string(),
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
@@ -37,7 +41,8 @@ impl ChallengeInfoApp {
         }
         log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
-        self.info_fetcher = self.selected_challenge.fetcher();
+        let app_state = Arc::clone(&self.app_state);
+        self.info_fetcher = self.selected_challenge.fetcher(app_state);
     }
     fn check_info_promise(&mut self) {
         let getter = &mut self.info_fetcher;
@@ -52,6 +57,10 @@ impl ChallengeInfoApp {
 impl super::App for ChallengeInfoApp {
     fn name(&self) -> &'static str {
         "📖 Challenge Info"
+    }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {

@@ -1,7 +1,9 @@
+use crate::helpers::AppState;
 use egui_notify::Toasts;
 use email_address::*;
 use gloo_net::http;
 use poll_promise::Promise;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Default, Clone, PartialEq, serde::Serialize)]
@@ -51,6 +53,8 @@ pub struct PasswordResetApp {
     new_password: String,
     #[serde(skip)]
     confirm_password: String,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for PasswordResetApp {
@@ -66,6 +70,7 @@ impl Default for PasswordResetApp {
             toasts: Toasts::default(),
             new_password: "".to_string(),
             confirm_password: "".to_string(),
+            app_state: Default::default(),
         }
     }
 }
@@ -166,6 +171,11 @@ impl super::App for PasswordResetApp {
     fn name(&self) -> &'static str {
         "🔐 Password Reset"
     }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
+    }
+
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
         self.check_reset_promise();
 

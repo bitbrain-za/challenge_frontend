@@ -1,8 +1,8 @@
-use std::collections::BTreeSet;
-
-use egui::{Context, ScrollArea, Ui};
-
 use super::App;
+use crate::helpers::AppState;
+use egui::{Context, ScrollArea, Ui};
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
 
 // ----------------------------------------------------------------------------
 
@@ -74,6 +74,8 @@ fn set_open(open: &mut BTreeSet<String>, key: &'static str, is_open: bool) {
 pub struct AppWindows {
     about_is_open: bool,
     apps: Apps,
+    #[serde(skip)]
+    pub app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for AppWindows {
@@ -81,6 +83,18 @@ impl Default for AppWindows {
         Self {
             about_is_open: true,
             apps: Default::default(),
+            app_state: Arc::new(Mutex::new(AppState::default())),
+        }
+    }
+}
+
+impl AppWindows {
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
+    pub fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
+
+        for app in &mut self.apps.apps {
+            app.set_app_state_ref(Arc::clone(&self.app_state));
         }
     }
 }
@@ -100,6 +114,16 @@ impl AppWindows {
                 ui.vertical_centered(|ui| {
                     ui.heading("🎯 apps");
                 });
+
+                ui.separator();
+
+                //TODO REMOVE
+                let counter = Arc::clone(&self.app_state);
+                let mut state = counter.lock().unwrap();
+                let label = format!("Count: {}", state.counter);
+                if ui.button(label).clicked() {
+                    state.counter += 1;
+                }
 
                 ui.separator();
 

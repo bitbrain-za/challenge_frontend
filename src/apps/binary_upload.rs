@@ -1,9 +1,10 @@
 use std::borrow::BorrowMut;
+use std::sync::{Arc, Mutex};
 
 use crate::helpers::{
     fetchers::Requestor,
     submission::{Submission, SubmissionResult},
-    Challenges, Languages,
+    AppState, Challenges, Languages,
 };
 use std::future::Future;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -25,6 +26,8 @@ pub struct BinaryUpload {
     binary_channel: (Sender<Binary>, Receiver<Binary>),
     #[serde(skip)]
     submitter: Option<Requestor>,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for BinaryUpload {
@@ -40,6 +43,7 @@ impl Default for BinaryUpload {
             binary_channel: channel(),
             submitter: None,
             last_result: SubmissionResult::NotStarted,
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
@@ -48,13 +52,18 @@ impl BinaryUpload {
     fn submit(&mut self) {
         let submission = self.run.clone();
         let url = format!("{}api/game/submit", self.url);
-        self.submitter = submission.sender(&url);
+        let app_state = Arc::clone(&self.app_state);
+        self.submitter = submission.sender(app_state, &url);
     }
 }
 
 impl super::App for BinaryUpload {
     fn name(&self) -> &'static str {
         "💻 File Upload"
+    }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {

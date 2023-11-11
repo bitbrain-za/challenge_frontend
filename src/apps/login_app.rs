@@ -1,8 +1,9 @@
-use crate::helpers::refresh;
+use crate::helpers::{refresh, AppState};
 use egui_notify::Toasts;
 use email_address::*;
 use gloo_net::http;
 use poll_promise::Promise;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use web_sys::RequestCredentials;
 
@@ -99,6 +100,8 @@ pub struct LoginApp {
     toasts: Toasts,
     #[serde(skip)]
     token_refresh_promise: refresh::RefreshPromise,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for LoginApp {
@@ -121,6 +124,7 @@ impl Default for LoginApp {
             state: LoginState::LoggedOut,
             register: RegisterSchema::default(),
             toasts: Toasts::default(),
+            app_state: Default::default(),
         }
     }
 }
@@ -433,6 +437,11 @@ impl super::App for LoginApp {
     fn name(&self) -> &'static str {
         "🔐 Login"
     }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
+    }
+
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
         match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
             refresh::RefreshStatus::InProgress => {}

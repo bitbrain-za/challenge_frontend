@@ -1,11 +1,10 @@
-use std::fmt::Display;
-
-use web_sys::FormData;
-
 use super::{
     fetchers::{GetStatus, Requestor},
-    Challenges, Languages,
+    AppState, Challenges, Languages,
 };
+use std::fmt::Display;
+use std::sync::{Arc, Mutex};
+use web_sys::FormData;
 
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Submission {
@@ -74,13 +73,13 @@ impl Submission {
         }
     }
 
-    pub fn sender(&self, url: &str) -> Option<Requestor> {
+    pub fn sender(&self, app_state: Arc<Mutex<AppState>>, url: &str) -> Option<Requestor> {
         let mut submitter = if self.code.is_some() {
             let submission = Some(serde_json::to_string(&self).unwrap());
-            Requestor::new_post(url, true, submission)
+            Requestor::new_post(app_state, url, true, submission)
         } else {
             let submission = Some(self.to_formdata());
-            Requestor::new_form_post(url, true, submission)
+            Requestor::new_form_post(app_state, url, true, submission)
         };
         submitter.send();
         Some(submitter)
