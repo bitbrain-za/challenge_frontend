@@ -11,6 +11,17 @@ pub enum GetStatus<T: Clone + Sync + Send> {
     Failed(String),
 }
 
+impl std::fmt::Display for GetStatus<String> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GetStatus::NotStarted => write!(f, "Not started"),
+            GetStatus::InProgress => write!(f, "Loading..."),
+            GetStatus::Success(s) => write!(f, "{}", s),
+            GetStatus::Failed(s) => write!(f, "{}", s),
+        }
+    }
+}
+
 pub struct Getter<T: Clone + Sync + Send + 'static> {
     promise: Option<Promise<Result<T, String>>>,
     with_credentials: bool,

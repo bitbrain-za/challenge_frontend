@@ -1,4 +1,4 @@
-use super::fetchers::{GetStatus, Getter};
+use super::fetchers::Getter;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(
@@ -42,7 +42,6 @@ impl Challenges {
             _ => {
                 let mut getter = Getter::<String>::new(&self.get_info_url(), context, false);
                 getter.get();
-
                 Some(getter)
             }
         }

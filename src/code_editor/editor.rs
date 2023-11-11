@@ -126,18 +126,17 @@ impl CodeEditor {
         let getter = &mut self.info_fetcher;
 
         if let Some(getter) = getter {
-            match &getter.check_promise() {
-                GetStatus::NotStarted => {}
-                GetStatus::InProgress => {}
-                GetStatus::Success(text) => {
-                    self.instructions = text.clone();
-                }
+            let result = &getter.check_promise();
+            match result {
                 GetStatus::Failed(err) => {
                     self.toasts
                         .error(format!("Error fetching challenge info: {}", err))
                         .set_duration(Some(Duration::from_secs(5)));
 
-                    log::error!("Error fetching file: {}", err);
+                    log::error!("Error fetching document: {}", err);
+                }
+                _ => {
+                    self.instructions = result.to_string();
                 }
             }
         }
