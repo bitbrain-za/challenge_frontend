@@ -1,4 +1,4 @@
-use crate::helpers::{refresh, AppState, LoginState};
+use crate::helpers::{refresh, AppState};
 use gloo_net::http;
 use poll_promise::Promise;
 use std::sync::{Arc, Mutex};
@@ -15,6 +15,7 @@ pub enum RequestStatus {
 enum Method {
     Get,
     Post,
+    Refresh,
 }
 
 impl std::fmt::Display for RequestStatus {
@@ -50,6 +51,12 @@ pub struct Requestor {
 impl Requestor {
     pub fn new_get(app_state: Arc<Mutex<AppState>>, url: &str, with_credentials: bool) -> Self {
         Self::new(app_state, url, with_credentials, None, None, Method::Get)
+    }
+
+    pub fn new_refresh(app_state: Arc<Mutex<AppState>>) -> Self {
+        let mut s = Self::new(app_state, "", true, None, None, Method::Refresh);
+        s.refresh_login();
+        s
     }
 
     pub fn new_post(
@@ -100,6 +107,8 @@ impl Requestor {
             refresh::RefreshStatus::InProgress => {}
             refresh::RefreshStatus::Success => {
                 log::debug!("Retrying Request");
+                AppState::set_logged_in(&self.app_state);
+                self.state_has_changed = true;
                 self.send();
                 return RequestStatus::InProgress;
             }
@@ -123,9 +132,7 @@ impl Requestor {
                             self.token_refresh_promise = refresh::submit_refresh();
                             RequestStatus::InProgress
                         } else {
-                            let app = Arc::clone(&self.app_state);
-                            let mut app = app.lock().unwrap();
-                            app.logged_in = LoginState::LoggedOut;
+                            AppState::set_logged_out(&self.app_state);
                             RequestStatus::Failed("Authentication failed".to_string())
                         }
                     }
@@ -155,7 +162,12 @@ impl Requestor {
         match self.method {
             Method::Get => self.get(),
             Method::Post => self.post(),
+            Method::Refresh => (),
         }
+    }
+
+    fn refresh_login(&mut self) {
+        self.token_refresh_promise = refresh::submit_refresh();
     }
 
     fn get(&mut self) {

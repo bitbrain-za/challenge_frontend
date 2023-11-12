@@ -187,9 +187,8 @@ impl LoginApp {
                             self.toasts
                                 .info(format!("Logged in: {}", &self.login.email))
                                 .set_duration(Some(Duration::from_secs(5)));
-                            let app = Arc::clone(&self.app_state);
-                            let mut app = app.lock().unwrap();
-                            app.logged_in = LoginState::LoggedIn(self.login.email.clone());
+
+                            AppState::set_logged_in(&self.app_state);
                         }
                         LoginResponse::Failure { status: _, message } => {
                             log::error!("Failed to login: {}", message);
@@ -224,9 +223,7 @@ impl LoginApp {
                     self.toasts
                         .info(format!("Logged out: {}", &self.login.email))
                         .set_duration(Some(Duration::from_secs(5)));
-                    let app = Arc::clone(&self.app_state);
-                    let mut app = app.lock().unwrap();
-                    app.logged_in = LoginState::LoggedOut;
+                    AppState::set_logged_out(&self.app_state);
                     self.logout_requestor = None;
                 }
                 _ => {}
@@ -438,6 +435,10 @@ impl super::App for LoginApp {
 
     fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
         self.app_state = app_state;
+        let app_state = Arc::clone(&self.app_state);
+        let mut req = Requestor::new_refresh(app_state);
+        req.send();
+        self.login_requestor = Some(req);
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
@@ -464,7 +465,7 @@ impl super::View for LoginApp {
 
         match self.state {
             LoginAppState::Login => match logged_in {
-                LoginState::LoggedIn(_) => self.ui_logged_in(ui),
+                LoginState::LoggedIn => self.ui_logged_in(ui),
                 LoginState::LoggedOut => self.ui_logged_out(ui),
             },
             LoginAppState::RegisterNewUser => self.ui_register(ui),
