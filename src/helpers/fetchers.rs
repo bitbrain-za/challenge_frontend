@@ -128,7 +128,6 @@ impl Requestor {
                         if self.retry_count > 0 {
                             log::debug!("Retrying auth");
                             self.retry_count -= 1;
-                            self.promise = None;
                             self.token_refresh_promise = refresh::submit_refresh();
                             RequestStatus::InProgress
                         } else {
@@ -142,6 +141,12 @@ impl Requestor {
                 None => RequestStatus::InProgress,
             };
             self.state_has_changed = true;
+        }
+        match res {
+            RequestStatus::InProgress => {}
+            _ => {
+                self.promise = None;
+            }
         }
         res
     }
