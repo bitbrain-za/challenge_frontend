@@ -1,5 +1,5 @@
 use super::{
-    fetchers::{GetStatus, Requestor},
+    fetchers::{RequestStatus, Requestor},
     AppState, Challenges, Languages,
 };
 use std::fmt::Display;
@@ -50,7 +50,7 @@ impl Submission {
             let result = &requestor.check_promise();
 
             match result {
-                GetStatus::Success(text) => {
+                RequestStatus::Success(text) => {
                     *sender = None;
                     match serde_json::from_str::<SubmissionResult>(text) {
                         Ok(submission_response) => submission_response.clone(),
@@ -59,14 +59,14 @@ impl Submission {
                         },
                     }
                 }
-                GetStatus::Failed(e) => {
+                RequestStatus::Failed(e) => {
                     *sender = None;
                     SubmissionResult::Failure {
                         message: e.to_string(),
                     }
                 }
-                GetStatus::InProgress => SubmissionResult::Busy,
-                GetStatus::NotStarted => SubmissionResult::NotStarted,
+                RequestStatus::InProgress => SubmissionResult::Busy,
+                RequestStatus::NotStarted => SubmissionResult::NotStarted,
             }
         } else {
             SubmissionResult::NotStarted

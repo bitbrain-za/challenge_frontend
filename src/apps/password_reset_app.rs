@@ -60,7 +60,7 @@ pub struct PasswordResetApp {
 impl Default for PasswordResetApp {
     fn default() -> Self {
         let url = option_env!("BACKEND_URL")
-            .unwrap_or("http://localhost:3000/")
+            .unwrap_or("http://12.34.56.78:9999/")
             .to_string();
         Self {
             promise: Default::default(),

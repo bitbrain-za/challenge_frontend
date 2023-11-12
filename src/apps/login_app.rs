@@ -1,11 +1,11 @@
-use crate::helpers::{refresh, AppState};
+use crate::helpers::{
+    fetchers::{RequestStatus, Requestor},
+    AppState, LoginState,
+};
 use egui_notify::Toasts;
 use email_address::*;
-use gloo_net::http;
-use poll_promise::Promise;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use web_sys::RequestCredentials;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 enum AuthRequest {
@@ -52,10 +52,6 @@ impl RegisterResponse {
     fn is_success(&self) -> bool {
         self.status.to_lowercase() == "success"
     }
-
-    async fn from_response(response: http::Response) -> Self {
-        response.json::<RegisterResponse>().await.unwrap()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -69,13 +65,10 @@ pub enum LoginResponse {
         message: String,
     },
 }
-
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
-enum LoginState {
-    LoggedIn(String),
-    LoggedOut,
+enum LoginAppState {
+    Login,
     RegisterNewUser,
-    Expired,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -83,23 +76,24 @@ enum LoginState {
 pub struct LoginApp {
     username: String,
     token: Option<String>,
-    submit: Option<AuthRequest>,
-    #[serde(skip)]
-    login_promise: Option<Promise<Result<LoginState, String>>>,
-    #[serde(skip)]
-    register_promise: Option<Promise<RegisterResponse>>,
     #[serde(skip)]
     url: String,
     #[serde(skip)]
     login: LoginSchema,
     #[serde(skip)]
-    state: LoginState,
+    state: LoginAppState,
     #[serde(skip)]
     register: RegisterSchema,
     #[serde(skip)]
     toasts: Toasts,
     #[serde(skip)]
-    token_refresh_promise: refresh::RefreshPromise,
+    login_requestor: Option<Requestor>,
+    #[serde(skip)]
+    logout_requestor: Option<Requestor>,
+    #[serde(skip)]
+    register_requestor: Option<Requestor>,
+    #[serde(skip)]
+    reset_pass_requestor: Option<Requestor>,
     #[serde(skip)]
     app_state: Arc<Mutex<AppState>>,
 }
@@ -107,198 +101,202 @@ pub struct LoginApp {
 impl Default for LoginApp {
     fn default() -> Self {
         let url = option_env!("BACKEND_URL")
-            .unwrap_or("http://localhost:3000/")
+            .unwrap_or("http://12.34.56.78:3000/")
             .to_string();
         Self {
-            token_refresh_promise: refresh::submit_refresh(),
-            login_promise: Default::default(),
-            register_promise: Default::default(),
             url,
             login: LoginSchema {
-                email: "".to_string(),
-                password: "".to_string(),
+                email: "admin@admin.com".to_string(),
+                password: "password123".to_string(),
             },
             token: None,
             username: "".to_string(),
-            submit: None,
-            state: LoginState::LoggedOut,
+            state: LoginAppState::Login,
             register: RegisterSchema::default(),
             toasts: Toasts::default(),
             app_state: Default::default(),
+            login_requestor: None,
+            logout_requestor: None,
+            register_requestor: None,
+            reset_pass_requestor: None,
         }
     }
 }
 
 impl LoginApp {
-    fn submit_login(&mut self, ctx: &egui::Context) {
-        let submission = self.login.clone();
-
+    fn submit_login(&mut self) {
+        let submission = Some(serde_json::to_string(&self.login).unwrap());
         let url = format!("{}api/auth/login", self.url);
-        log::debug!("Sending to {}", url);
-        let ctx = ctx.clone();
-
-        let promise = Promise::spawn_local(async move {
-            let response = http::Request::post(&url)
-                .credentials(RequestCredentials::Include)
-                .json(&submission)
-                .unwrap()
-                .send()
-                .await
-                .unwrap();
-            let result: LoginResponse = response.json().await.unwrap();
-
-            let result = match result {
-                LoginResponse::Success { .. } => Ok(LoginState::LoggedIn(submission.email)),
-                LoginResponse::Failure { status: _, message } => {
-                    log::error!("Failed to login: {}", message);
-                    Err(message)
-                }
-            };
-
-            ctx.request_repaint(); // wake up UI thread
-            result
-        });
-
-        self.login_promise = Some(promise);
-        self.submit = None;
+        let app_state = Arc::clone(&self.app_state);
+        let mut req = Requestor::new_post(app_state, &url, true, submission);
+        req.send();
+        self.login_requestor = Some(req);
     }
-    fn submit_logout(&mut self, ctx: &egui::Context) {
+
+    fn submit_logout(&mut self) {
         let url = format!("{}api/auth/logout", self.url);
-        log::debug!("Sending to {}", url);
-        let ctx = ctx.clone();
-
-        let promise = Promise::spawn_local(async move {
-            let response = http::Request::post(&url)
-                .credentials(RequestCredentials::Include)
-                .send()
-                .await
-                .unwrap();
-            let result = match response.status() {
-                200 => Ok(LoginState::LoggedOut),
-                401 => {
-                    let text = response.text().await;
-                    let text = text.map(|text| text.to_owned());
-                    let text = match text {
-                        Ok(text) => text,
-                        Err(e) => e.to_string(),
-                    };
-                    log::warn!("Auth Error: {:?}", text);
-                    Ok(LoginState::Expired)
-                }
-                _ => {
-                    let text = response.text().await.unwrap();
-                    Err(text)
-                }
-            };
-            ctx.request_repaint(); // wake up UI thread
-            result
-        });
-
-        self.login_promise = Some(promise);
-        self.submit = None;
+        let app_state = Arc::clone(&self.app_state);
+        let mut req = Requestor::new_post(app_state, &url, true, None);
+        req.send();
+        self.logout_requestor = Some(req);
     }
-    fn submit_register(&mut self, ctx: &egui::Context) {
-        if self.register == RegisterSchema::default() {
-            return;
-        }
-        let submission = self.register.clone();
+
+    fn submit_register(&mut self) {
+        let submission = Some(serde_json::to_string(&self.register).unwrap());
         let url = format!("{}api/auth/register", self.url);
-        let ctx = ctx.clone();
-
-        let promise = Promise::spawn_local(async move {
-            let response = http::Request::post(&url)
-                .json(&submission)
-                .unwrap()
-                .send()
-                .await
-                .unwrap();
-            let result = RegisterResponse::from_response(response).await;
-            log::info!("Result: {:?}", result);
-            ctx.request_repaint(); // wake up UI thread
-            result
-        });
-
-        self.register_promise = Some(promise);
-        self.submit = None;
+        let app_state = Arc::clone(&self.app_state);
+        let mut req = Requestor::new_post(app_state, &url, false, submission);
+        req.send();
+        self.register_requestor = Some(req);
     }
 
     fn submit_forgot_password(&mut self) {
-        let submission = self.login.to_forgot_password();
         let url = format!("{}api/auth/forgotpassword", self.url);
-
+        let submission = Some(serde_json::to_string(&self.login.to_forgot_password()).unwrap());
+        let app_state = Arc::clone(&self.app_state);
+        let mut req = Requestor::new_post(app_state, &url, false, submission);
+        req.send();
+        self.reset_pass_requestor = Some(req);
         self.toasts
             .info(format!(
                 "If {} is a registered address you will receive a password reset link shortly.",
                 self.login.email
             ))
             .set_duration(Some(Duration::from_secs(5)));
-
-        let promise = Promise::spawn_local(async move {
-            let response = http::Request::post(&url)
-                .json(&submission)
-                .unwrap()
-                .send()
-                .await
-                .unwrap();
-            let result = RegisterResponse::from_response(response).await;
-            log::info!("Result: {:?}", result);
-            Ok(LoginState::LoggedOut)
-        });
-        self.login_promise = Some(promise);
     }
 
     fn check_login_promise(&mut self) {
-        if let Some(promise) = &self.login_promise {
-            if let Some(result) = promise.ready() {
-                match result {
-                    Ok(LoginState::LoggedIn(email)) => {
-                        self.state = LoginState::LoggedIn(email.clone());
-                        self.toasts
-                            .info(format!("Logged in as {}.", email))
-                            .set_duration(Some(Duration::from_secs(5)));
-                    }
-                    Ok(LoginState::LoggedOut) => {
-                        self.state = LoginState::LoggedOut;
-                        self.toasts
-                            .info("Logged out.")
-                            .set_duration(Some(Duration::from_secs(5)));
-                    }
-                    Ok(LoginState::Expired) => {
-                        self.state = LoginState::Expired;
-                        self.token_refresh_promise = refresh::submit_refresh();
-                    }
-                    Err(e) => {
-                        self.toasts
-                            .error(format!("Failed: {}", e))
-                            .set_duration(Some(Duration::from_secs(5)));
-                        log::error!("Error: {}", e);
-                    }
-                    _ => {
-                        log::error!("How did you get here?!");
-                    }
+        let getter = &mut self.login_requestor;
+
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+            match result {
+                RequestStatus::Failed(err) => {
+                    self.toasts
+                        .error(format!("Failed: {}", err))
+                        .set_duration(Some(Duration::from_secs(5)));
+
+                    log::error!("Error sending: {}", err);
+                    self.login_requestor = None;
                 }
-                self.login_promise = None;
+                RequestStatus::Success(text) => {
+                    log::debug!("Success: {}", text);
+                    let result: LoginResponse = serde_json::from_str(text).unwrap();
+                    match result {
+                        LoginResponse::Success { .. } => {
+                            self.toasts
+                                .info(format!("Logged in: {}", &self.login.email))
+                                .set_duration(Some(Duration::from_secs(5)));
+                            let app = Arc::clone(&self.app_state);
+                            let mut app = app.lock().unwrap();
+                            app.logged_in = LoginState::LoggedIn(self.login.email.clone());
+                        }
+                        LoginResponse::Failure { status: _, message } => {
+                            log::error!("Failed to login: {}", message);
+                            self.toasts
+                                .error(format!("Failed to login: {}", message))
+                                .set_duration(Some(Duration::from_secs(5)));
+                        }
+                    };
+                    self.login_requestor = None;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn check_logout_promise(&mut self) {
+        let getter = &mut self.logout_requestor;
+
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+            match result {
+                RequestStatus::Failed(err) => {
+                    self.toasts
+                        .error(format!("Failed: {}", err))
+                        .set_duration(Some(Duration::from_secs(5)));
+
+                    log::error!("Error sending: {}", err);
+                    self.logout_requestor = None;
+                }
+                RequestStatus::Success(text) => {
+                    log::debug!("Success: {}", text);
+                    self.toasts
+                        .info(format!("Logged out: {}", &self.login.email))
+                        .set_duration(Some(Duration::from_secs(5)));
+                    let app = Arc::clone(&self.app_state);
+                    let mut app = app.lock().unwrap();
+                    app.logged_in = LoginState::LoggedOut;
+                    self.logout_requestor = None;
+                }
+                _ => {}
             }
         }
     }
 
     fn check_register_promise(&mut self) {
-        if let Some(promise) = &self.register_promise {
-            if let Some(result) = promise.ready() {
-                if result.is_success() {
+        let getter = &mut self.register_requestor;
+
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+            match result {
+                RequestStatus::Failed(err) => {
+                    self.register_requestor = None;
                     self.toasts
-                        .info("Registered successfully! Please login.")
+                        .error(format!("Failed: {}", err))
                         .set_duration(Some(Duration::from_secs(5)));
-                    self.toasts
-                        .info("Please check your junk folder for the registration email.")
-                        .set_duration(Some(Duration::from_secs(5)));
-                } else {
-                    self.toasts
-                        .error("Failed to register!")
-                        .set_duration(Some(Duration::from_secs(5)));
+
+                    log::error!("Error sending: {}", err);
                 }
-                self.register_promise = None;
-                self.register = RegisterSchema::default();
+                RequestStatus::Success(text) => {
+                    log::debug!("Success: {}", text);
+                    let result: RegisterResponse = serde_json::from_str(text).unwrap();
+                    if result.is_success() {
+                        self.toasts
+                            .info("Registered successfully! Please login.")
+                            .set_duration(Some(Duration::from_secs(5)));
+                        self.toasts
+                            .info("Please check your junk folder for the registration email.")
+                            .set_duration(Some(Duration::from_secs(5)));
+                    } else {
+                        self.toasts
+                            .error("Failed to register!")
+                            .set_duration(Some(Duration::from_secs(5)));
+                    }
+                    self.register_requestor = None;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn check_reset_password_promise(&mut self) {
+        let getter = &mut self.reset_pass_requestor;
+
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+            match result {
+                RequestStatus::Failed(err) => {
+                    self.toasts
+                        .error(format!("Failed: {}", err))
+                        .set_duration(Some(Duration::from_secs(5)));
+
+                    log::error!("Error sending: {}", err);
+                }
+                RequestStatus::Success(text) => {
+                    log::debug!("Success: {}", text);
+                    let result: RegisterResponse = serde_json::from_str(text).unwrap();
+                    if result.is_success() {
+                        self.toasts
+                            .info("Password reset token sent")
+                            .set_duration(Some(Duration::from_secs(5)));
+                        self.toasts
+                            .info("Please check your junk folder for the registration email.")
+                            .set_duration(Some(Duration::from_secs(5)));
+                    }
+                    self.reset_pass_requestor = None;
+                }
+                _ => {}
             }
         }
     }
@@ -307,7 +305,7 @@ impl LoginApp {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 if ui.button("Logout").clicked() {
-                    self.submit = Some(AuthRequest::Logout);
+                    self.submit_logout()
                 }
             });
             ui.separator();
@@ -341,7 +339,7 @@ impl LoginApp {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 if ui.button("Login").clicked() {
-                    self.submit = Some(AuthRequest::Login);
+                    self.submit_login();
                 }
             });
             ui.vertical(|ui| {
@@ -353,7 +351,7 @@ impl LoginApp {
             ui.vertical(|ui| {
                 if ui.button("Register").clicked() {
                     self.register = RegisterSchema::default();
-                    self.state = LoginState::RegisterNewUser;
+                    self.state = LoginAppState::RegisterNewUser;
                 }
             });
         });
@@ -418,7 +416,7 @@ impl LoginApp {
                             ))
                             .set_duration(Some(Duration::from_secs(5)));
                     } else {
-                        self.submit = Some(AuthRequest::Register);
+                        self.submit_register();
                     }
                 }
             });
@@ -426,7 +424,7 @@ impl LoginApp {
             ui.vertical(|ui| {
                 if ui.button("Cancel").clicked() {
                     self.register = RegisterSchema::default();
-                    self.state = LoginState::LoggedOut;
+                    self.state = LoginAppState::Login;
                 }
             });
         });
@@ -443,41 +441,11 @@ impl super::App for LoginApp {
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
-        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
-            refresh::RefreshStatus::InProgress => {}
-            refresh::RefreshStatus::Success => {
-                if self.state == LoginState::Expired {
-                    self.submit = Some(AuthRequest::Logout);
-                }
-                self.state = LoginState::LoggedIn(self.login.email.clone());
-            }
-            refresh::RefreshStatus::Failed(_) => {
-                self.state = LoginState::LoggedOut;
-                self.submit = None;
-            }
-            _ => (),
-        }
         self.check_login_promise();
+        self.check_logout_promise();
         self.check_register_promise();
+        self.check_reset_password_promise();
 
-        if let Some(s) = &self.submit {
-            match s {
-                AuthRequest::Login => {
-                    log::debug!("Submitting login request");
-                    self.submit_login(ctx);
-                }
-                AuthRequest::Logout => {
-                    if self.state != LoginState::LoggedOut {
-                        log::debug!("Submitting logout request");
-                        self.submit_logout(ctx);
-                    }
-                }
-                AuthRequest::Register => {
-                    log::debug!("Submitting register request");
-                    self.submit_register(ctx);
-                }
-            }
-        }
         use super::View as _;
         egui::Window::new(self.name())
             .open(open)
@@ -490,14 +458,16 @@ impl super::App for LoginApp {
 
 impl super::View for LoginApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
+        let app = Arc::clone(&self.app_state);
+        let app = app.lock().unwrap();
+        let logged_in = app.logged_in.clone();
+
         match self.state {
-            LoginState::LoggedIn(..) => self.ui_logged_in(ui),
-            LoginState::LoggedOut => self.ui_logged_out(ui),
-            LoginState::RegisterNewUser => self.ui_register(ui),
-            LoginState::Expired => {
-                ui.label("Your session has expired. Please login again.");
-                self.ui_logged_out(ui);
-            }
+            LoginAppState::Login => match logged_in {
+                LoginState::LoggedIn(_) => self.ui_logged_in(ui),
+                LoginState::LoggedOut => self.ui_logged_out(ui),
+            },
+            LoginAppState::RegisterNewUser => self.ui_register(ui),
         }
     }
 }

@@ -1,11 +1,11 @@
-use crate::helpers::{refresh, AppState};
+use crate::helpers::{refresh, AppState, LoginState};
 use gloo_net::http;
 use poll_promise::Promise;
 use std::sync::{Arc, Mutex};
 use web_sys::{FormData, RequestCredentials};
 
 #[derive(Clone, Debug)]
-pub enum GetStatus {
+pub enum RequestStatus {
     NotStarted,
     InProgress,
     Success(String),
@@ -17,19 +17,19 @@ enum Method {
     Post,
 }
 
-impl std::fmt::Display for GetStatus {
+impl std::fmt::Display for RequestStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GetStatus::NotStarted => write!(f, "Not started"),
-            GetStatus::InProgress => write!(f, "Loading..."),
-            GetStatus::Success(s) => write!(f, "{}", s),
-            GetStatus::Failed(s) => write!(f, "{}", s),
+            RequestStatus::NotStarted => write!(f, "Not started"),
+            RequestStatus::InProgress => write!(f, "Loading..."),
+            RequestStatus::Success(s) => write!(f, "{}", s),
+            RequestStatus::Failed(s) => write!(f, "{}", s),
         }
     }
 }
 
 enum FetchResponse {
-    Success(GetStatus),
+    Success(RequestStatus),
     Failure(String),
     FailAuth,
 }
@@ -94,42 +94,45 @@ impl Requestor {
         }
     }
 
-    pub fn check_promise(&mut self) -> GetStatus {
+    pub fn check_promise(&mut self) -> RequestStatus {
         match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
             refresh::RefreshStatus::NotStarted => {}
             refresh::RefreshStatus::InProgress => {}
             refresh::RefreshStatus::Success => {
                 log::debug!("Retrying Request");
-                self.get();
-                return GetStatus::InProgress;
+                self.send();
+                return RequestStatus::InProgress;
             }
             refresh::RefreshStatus::Failed(_) => {
                 self.state_has_changed = true;
-                return GetStatus::Failed("Failed to authenticate".to_string());
+                return RequestStatus::Failed("Failed to authenticate".to_string());
             }
         }
 
-        let mut res = GetStatus::NotStarted;
+        let mut res = RequestStatus::NotStarted;
         if let Some(promise) = &self.promise {
             res = match promise.ready() {
                 Some(result) => match result {
                     Ok(FetchResponse::Success(status)) => status.clone(),
-                    Ok(FetchResponse::Failure(e)) => GetStatus::Failed(e.to_string()),
+                    Ok(FetchResponse::Failure(e)) => RequestStatus::Failed(e.to_string()),
                     Ok(FetchResponse::FailAuth) => {
                         if self.retry_count > 0 {
                             log::debug!("Retrying auth");
                             self.retry_count -= 1;
                             self.promise = None;
                             self.token_refresh_promise = refresh::submit_refresh();
-                            GetStatus::InProgress
+                            RequestStatus::InProgress
                         } else {
-                            GetStatus::Failed("Authentication failed".to_string())
+                            let app = Arc::clone(&self.app_state);
+                            let mut app = app.lock().unwrap();
+                            app.logged_in = LoginState::LoggedOut;
+                            RequestStatus::Failed("Authentication failed".to_string())
                         }
                     }
 
-                    Err(e) => GetStatus::Failed(e.to_string()),
+                    Err(e) => RequestStatus::Failed(e.to_string()),
                 },
-                None => GetStatus::InProgress,
+                None => RequestStatus::InProgress,
             };
             self.state_has_changed = true;
         }
@@ -168,7 +171,7 @@ impl Requestor {
             let text = response.text().await.map_err(|e| e.to_string())?;
 
             let result = match response.status() {
-                200 => FetchResponse::Success(GetStatus::Success(text)),
+                200 => FetchResponse::Success(RequestStatus::Success(text)),
                 401 => {
                     log::warn!("Auth Error: {}", text);
                     FetchResponse::FailAuth
@@ -212,7 +215,7 @@ impl Requestor {
             let text = response.text().await.map_err(|e| e.to_string())?;
 
             let result = match response.status() {
-                200 => FetchResponse::Success(GetStatus::Success(text)),
+                200 => FetchResponse::Success(RequestStatus::Success(text)),
                 401 => {
                     log::warn!("Auth Error: {}", text);
                     FetchResponse::FailAuth

@@ -1,5 +1,5 @@
 use crate::helpers::{
-    fetchers::{GetStatus, Requestor},
+    fetchers::{RequestStatus, Requestor},
     AppState, Challenges,
 };
 use scoreboard_db::Builder as FilterBuilder;
@@ -88,24 +88,24 @@ impl ScoreBoardApp {
         false
     }
 
-    fn check_fetch_promise(&mut self) -> GetStatus {
+    fn check_fetch_promise(&mut self) -> RequestStatus {
         let getter = &mut self.score_fetcher;
 
         if let Some(getter) = getter {
             let result = &getter.check_promise();
 
             match result {
-                GetStatus::Success(_) => {
+                RequestStatus::Success(_) => {
                     self.score_fetcher = None;
                 }
-                GetStatus::Failed(_) => {
+                RequestStatus::Failed(_) => {
                     self.score_fetcher = None;
                 }
                 _ => {}
             }
             return result.clone();
         }
-        GetStatus::NotStarted
+        RequestStatus::NotStarted
     }
 }
 
@@ -201,20 +201,20 @@ impl ScoreBoardApp {
         use egui_extras::{Column, TableBuilder};
 
         match self.check_fetch_promise() {
-            GetStatus::Success(text) => {
+            RequestStatus::Success(text) => {
                 self.score_fetcher = None;
                 self.scores = Some(serde_json::from_str(&text).unwrap());
             }
-            GetStatus::Failed(e) => {
+            RequestStatus::Failed(e) => {
                 self.score_fetcher = None;
                 let message = format!("Failed to fetch scores: {}", e);
                 log::error!("{}", message);
                 ui.label(message);
             }
-            GetStatus::InProgress => {
+            RequestStatus::InProgress => {
                 ui.label("Fetching scores...");
             }
-            GetStatus::NotStarted => {}
+            RequestStatus::NotStarted => {}
         }
 
         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;

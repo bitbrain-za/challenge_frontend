@@ -1,5 +1,5 @@
 use crate::helpers::{
-    fetchers::{GetStatus, Requestor},
+    fetchers::{RequestStatus, Requestor},
     submission::{Submission, SubmissionResult},
     AppState, Challenges, Languages,
 };
@@ -86,7 +86,7 @@ impl CodeEditor {
         if let Some(getter) = getter {
             let result = &getter.check_promise();
             match result {
-                GetStatus::Failed(err) => {
+                RequestStatus::Failed(err) => {
                     self.toasts
                         .error(format!("Error fetching challenge info: {}", err))
                         .set_duration(Some(Duration::from_secs(5)));
@@ -139,14 +139,6 @@ impl CodeEditor {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                //TODO remove
-                let counter = Arc::clone(&self.app_state);
-                let mut state = counter.lock().unwrap();
-                let label = format!("Count: {}", state.counter);
-                if ui.button(label).clicked() {
-                    state.counter += 1;
-                }
-
                 let _ = ui.button("Hotkeys").on_hover_ui(nested_hotkeys_ui);
                 ui.checkbox(&mut self.show_instructions, "Show Instructions");
 

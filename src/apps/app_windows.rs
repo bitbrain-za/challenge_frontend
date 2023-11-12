@@ -117,16 +117,6 @@ impl AppWindows {
 
                 ui.separator();
 
-                //TODO REMOVE
-                let counter = Arc::clone(&self.app_state);
-                let mut state = counter.lock().unwrap();
-                let label = format!("Count: {}", state.counter);
-                if ui.button(label).clicked() {
-                    state.counter += 1;
-                }
-
-                ui.separator();
-
                 self.app_list_ui(ui);
 
                 ui.separator();
