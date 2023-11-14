@@ -103,11 +103,18 @@ impl Default for LoginApp {
         let url = option_env!("BACKEND_URL")
             .unwrap_or("http://12.34.56.78:3000/")
             .to_string();
+
         Self {
             url,
             login: LoginSchema {
+                #[cfg(debug_assertions)]
                 email: "admin@admin.com".to_string(),
+                #[cfg(debug_assertions)]
                 password: "password123".to_string(),
+                #[cfg(not(debug_assertions))]
+                email: "".to_string(),
+                #[cfg(not(debug_assertions))]
+                password: "".to_string(),
             },
             token: None,
             username: "".to_string(),
