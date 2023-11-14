@@ -16,7 +16,10 @@ pub enum RefreshStatus {
 
 pub type RefreshPromise = Option<Promise<Result<RefreshResponse, String>>>;
 
-pub fn submit_refresh(url: &str) -> RefreshPromise {
+pub fn submit_refresh() -> RefreshPromise {
+    let url = option_env!("BACKEND_URL")
+        .unwrap_or("http://123.4.5.6:3000/")
+        .to_string();
     let url = format!("{}api/auth/refresh", url);
     log::debug!("Refreshing token");
 

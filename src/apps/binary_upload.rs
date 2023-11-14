@@ -1,13 +1,13 @@
+use std::borrow::BorrowMut;
+use std::sync::{Arc, Mutex};
+
 use crate::helpers::{
-    refresh,
-    submission::{Submission, SubmissionPromise, SubmissionResult},
-    Challenges, Languages,
+    fetchers::Requestor,
+    submission::{Submission, SubmissionResult},
+    AppState, Challenges, Languages,
 };
-use gloo_net::http;
-use poll_promise::Promise;
 use std::future::Future;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use web_sys::RequestCredentials;
 
 struct Binary {
     filename: String,
@@ -18,8 +18,6 @@ struct Binary {
 #[serde(default)]
 pub struct BinaryUpload {
     #[serde(skip)]
-    promise: SubmissionPromise,
-    #[serde(skip)]
     last_result: SubmissionResult,
     url: String,
     #[serde(skip)]
@@ -27,15 +25,14 @@ pub struct BinaryUpload {
     #[serde(skip)]
     binary_channel: (Sender<Binary>, Receiver<Binary>),
     #[serde(skip)]
-    submit: bool,
+    submitter: Option<Requestor>,
     #[serde(skip)]
-    token_refresh_promise: refresh::RefreshPromise,
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for BinaryUpload {
     fn default() -> Self {
         Self {
-            promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
@@ -44,65 +41,29 @@ impl Default for BinaryUpload {
                 ..Default::default()
             },
             binary_channel: channel(),
-            submit: false,
-            token_refresh_promise: None,
+            submitter: None,
             last_result: SubmissionResult::NotStarted,
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
 
 impl BinaryUpload {
-    fn submit(&mut self, ctx: &egui::Context) {
-        if !self.submit {
-            return;
-        }
-        self.submit = false;
+    fn submit(&mut self) {
         let submission = self.run.clone();
-
-        let url = format!("{}api/game/binary", self.url);
-        log::debug!("Sending to {}", url);
-        let ctx = ctx.clone();
-
-        let promise = Promise::spawn_local(async move {
-            let formdata = submission.to_formdata();
-
-            let response = http::Request::post(&url)
-                .credentials(RequestCredentials::Include)
-                .body(formdata)
-                .unwrap()
-                .send()
-                .await
-                .unwrap();
-
-            let result: SubmissionResult = match response.status() {
-                200 => response.json().await.unwrap(),
-                401 => {
-                    let text = response.text().await;
-                    let text = text.map(|text| text.to_owned());
-                    let text = match text {
-                        Ok(text) => text,
-                        Err(e) => e.to_string(),
-                    };
-                    log::warn!("Auth Error: {:?}", text);
-                    SubmissionResult::NotAuthorized
-                }
-                _ => {
-                    return Err(format!("Failed to submit code: {:?}", response));
-                }
-            };
-
-            ctx.request_repaint(); // wake up UI thread
-            log::info!("Result: {:?}", result);
-            Ok(result)
-        });
-
-        self.promise = Some(promise);
+        let url = format!("{}api/game/submit", self.url);
+        let app_state = Arc::clone(&self.app_state);
+        self.submitter = submission.sender(app_state, &url);
     }
 }
 
 impl super::App for BinaryUpload {
     fn name(&self) -> &'static str {
         "💻 File Upload"
+    }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
@@ -116,25 +77,17 @@ impl super::App for BinaryUpload {
             self.run.filename = f.filename;
             self.run.binary = Some(f.bytes);
         }
-        self.submit(ctx);
-        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
-            refresh::RefreshStatus::InProgress => {}
-            refresh::RefreshStatus::Success => {
-                self.submit = true;
-            }
-            refresh::RefreshStatus::Failed(_) => {}
-            _ => (),
-        }
 
-        let submission = Submission::check_submit_promise(&mut self.promise);
+        let submission = Submission::check_sender(&mut self.submitter);
         match submission {
             SubmissionResult::NotStarted => {}
-            SubmissionResult::NotAuthorized => {
-                self.token_refresh_promise = refresh::submit_refresh(&self.url);
-                self.last_result = submission;
-            }
             _ => {
                 self.last_result = submission;
+            }
+        }
+        if let Some(fetcher) = self.submitter.borrow_mut() {
+            if fetcher.refresh_context() {
+                ctx.request_repaint();
             }
         }
     }
@@ -191,7 +144,7 @@ impl super::View for BinaryUpload {
             if ui.button("Submit").clicked() {
                 match self.run.validate() {
                     Ok(_) => {
-                        self.submit = true;
+                        self.submit();
                     }
                     Err(e) => {
                         self.last_result = SubmissionResult::Failure { message: e };

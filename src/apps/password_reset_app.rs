@@ -1,7 +1,10 @@
+use crate::helpers::{
+    fetchers::{RequestStatus, Requestor},
+    AppState,
+};
 use egui_notify::Toasts;
 use email_address::*;
-use gloo_net::http;
-use poll_promise::Promise;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Default, Clone, PartialEq, serde::Serialize)]
@@ -18,22 +21,6 @@ struct ResetPasswordSchema {
     password: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-struct Response {
-    status: String,
-    message: String,
-}
-
-impl Response {
-    fn is_success(&self) -> bool {
-        self.status.to_lowercase() == "success"
-    }
-
-    async fn from_response(response: http::Response) -> Self {
-        response.json::<Response>().await.unwrap()
-    }
-}
-
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct PasswordResetApp {
@@ -42,8 +29,6 @@ pub struct PasswordResetApp {
     #[serde(skip)]
     token: String,
     #[serde(skip)]
-    promise: Option<Promise<Response>>,
-    #[serde(skip)]
     url: String,
     #[serde(skip)]
     toasts: Toasts,
@@ -51,21 +36,26 @@ pub struct PasswordResetApp {
     new_password: String,
     #[serde(skip)]
     confirm_password: String,
+    #[serde(skip)]
+    requestor: Option<Requestor>,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for PasswordResetApp {
     fn default() -> Self {
         let url = option_env!("BACKEND_URL")
-            .unwrap_or("http://localhost:3000/")
+            .unwrap_or("http://12.34.56.78:9999/")
             .to_string();
         Self {
-            promise: Default::default(),
+            requestor: Default::default(),
             url,
             token: "".to_string(),
             email: "".to_string(),
             toasts: Toasts::default(),
             new_password: "".to_string(),
             confirm_password: "".to_string(),
+            app_state: Default::default(),
         }
     }
 }
@@ -76,36 +66,32 @@ impl PasswordResetApp {
             password: self.new_password.clone(),
         };
 
+        let submission = Some(serde_json::to_string(&submission).unwrap());
         let url = format!("{}api/auth/resetpassword/{}", self.url, self.token);
-
-        let promise = Promise::spawn_local(async move {
-            let response = http::Request::post(&url)
-                .json(&submission)
-                .unwrap()
-                .send()
-                .await
-                .unwrap();
-            let result = Response::from_response(response).await;
-            log::info!("Result: {:?}", result);
-            result
-        });
-
-        self.promise = Some(promise);
+        let app_state = Arc::clone(&self.app_state);
+        let mut req = Requestor::new_post(app_state, &url, true, submission);
+        req.send();
+        self.requestor = Some(req);
     }
 
     fn check_reset_promise(&mut self) {
-        if let Some(promise) = &self.promise {
-            if let Some(result) = promise.ready() {
-                if result.is_success() {
+        let getter = &mut self.requestor;
+
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+
+            match result {
+                RequestStatus::Failed(message) => {
+                    self.toasts
+                        .error(format!("Error Resetting password: {}", message))
+                        .set_duration(Some(Duration::from_secs(5)));
+                }
+                RequestStatus::Success(_) => {
                     self.toasts
                         .info("Password reset successfully! Please login.")
                         .set_duration(Some(Duration::from_secs(5)));
-                } else {
-                    self.toasts
-                        .error(format!("Error Resetting password: {}", result.message))
-                        .set_duration(Some(Duration::from_secs(5)));
                 }
-                self.promise = None;
+                _ => {}
             }
         }
     }
@@ -166,6 +152,11 @@ impl super::App for PasswordResetApp {
     fn name(&self) -> &'static str {
         "🔐 Password Reset"
     }
+
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
+    }
+
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
         self.check_reset_promise();
 

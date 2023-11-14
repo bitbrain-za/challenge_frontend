@@ -1,11 +1,12 @@
-use crate::helpers::{refresh, Challenges};
-use gloo_net::http;
-use poll_promise::Promise;
+use crate::helpers::{
+    fetchers::{RequestStatus, Requestor},
+    AppState, Challenges,
+};
 use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::Filter as ScoreBoardFilter;
 use scoreboard_db::{NiceTime, Score, ScoreBoard, SortColumn};
-use std::str::FromStr;
-use web_sys::RequestCredentials;
+use std::sync::{Arc, Mutex};
+use std::{borrow::BorrowMut, str::FromStr};
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -32,15 +33,13 @@ pub struct ScoreBoardApp {
     active_sort_column: String,
 
     scores: Option<Vec<Score>>,
-
-    #[serde(skip)]
-    promise: Option<Promise<FetchResponse>>,
-    #[serde(skip)]
-    token_refresh_promise: refresh::RefreshPromise,
     #[serde(skip)]
     url: String,
+
     #[serde(skip)]
-    refresh: bool,
+    score_fetcher: Option<Requestor>,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for ScoreBoardApp {
@@ -49,63 +48,34 @@ impl Default for ScoreBoardApp {
             challenge: Challenges::default(),
             filter: FilterOption::All,
             sort_column: "time".to_string(),
-            promise: None,
-            token_refresh_promise: None,
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
-            refresh: true,
 
-            active_challenge: Challenges::default(),
+            active_challenge: Challenges::None,
             active_filter: FilterOption::All,
             active_sort_column: "time".to_string(),
             scores: None,
+            score_fetcher: None,
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
 
 impl ScoreBoardApp {
-    fn fetch(&mut self, ctx: &egui::Context) {
-        if !self.refresh {
-            return;
-        }
-        self.refresh = false;
+    fn fetch(&mut self) {
         self.scores = None;
 
         let url = format!("{}api/game/scores/{}", self.url, self.challenge);
-        let ctx = ctx.clone();
 
-        let promise = poll_promise::Promise::spawn_local(async move {
-            let response = http::Request::get(&url).credentials(RequestCredentials::Include);
-            let response = response.send().await.unwrap();
-            let text = response.text().await;
-            let text = text.map(|text| text.to_owned());
-
-            let result = match response.status() {
-                200 => {
-                    let scores: Vec<Score> = serde_json::from_str(text.as_ref().unwrap()).unwrap();
-                    FetchResponse::Success(scores)
-                }
-                401 => {
-                    let text = match text {
-                        Ok(text) => text,
-                        Err(e) => e.to_string(),
-                    };
-                    log::warn!("Auth Error: {:?}", text);
-                    FetchResponse::FailAuth
-                }
-                _ => {
-                    log::error!("Response: {:?}", text);
-                    FetchResponse::Failure(text.unwrap())
-                }
-            };
-            ctx.request_repaint(); // wake up UI thread
-            result
-        });
-        self.promise = Some(promise);
+        log::debug!("Fetching challenge info");
+        let app_state = Arc::clone(&self.app_state);
+        let mut getter = Requestor::new_get(app_state, &url, true);
+        getter.send();
+        self.score_fetcher = Some(getter);
     }
 
-    fn check_for_reload(&mut self) {
+    fn check_for_reload(&mut self) -> bool {
         if self.active_challenge != self.challenge
             || self.active_filter != self.filter
             || self.active_sort_column != self.sort_column
@@ -113,22 +83,29 @@ impl ScoreBoardApp {
             self.active_challenge = self.challenge;
             self.active_filter = self.filter;
             self.active_sort_column = self.sort_column.clone();
-            self.refresh = true;
+            return true;
         }
+        false
     }
 
-    fn check_fetch_promise(&mut self) -> Option<FetchResponse> {
-        if let Some(promise) = &self.promise {
-            if let Some(result) = promise.ready() {
-                if let FetchResponse::FailAuth = result {
-                    self.token_refresh_promise = refresh::submit_refresh(&self.url);
+    fn check_fetch_promise(&mut self) -> RequestStatus {
+        let getter = &mut self.score_fetcher;
+
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+
+            match result {
+                RequestStatus::Success(_) => {
+                    self.score_fetcher = None;
                 }
-                let result = Some(result.clone());
-                self.promise = None;
-                return result;
+                RequestStatus::Failed(_) => {
+                    self.score_fetcher = None;
+                }
+                _ => {}
             }
+            return result.clone();
         }
-        None
+        RequestStatus::NotStarted
     }
 }
 
@@ -137,9 +114,22 @@ impl super::App for ScoreBoardApp {
         "☰ Score Board"
     }
 
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
+    }
+
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
-        self.check_for_reload();
-        self.fetch(ctx);
+        if self.check_for_reload() {
+            self.fetch();
+        }
+
+        if let Some(fetcher) = self.score_fetcher.borrow_mut() {
+            if fetcher.refresh_context() {
+                log::debug!("Refreshing context");
+                ctx.request_repaint();
+            }
+        }
+
         egui::Window::new(self.name())
             .open(open)
             .default_width(400.0)
@@ -192,7 +182,7 @@ impl super::View for ScoreBoardApp {
                     );
                     ui.separator();
                     if ui.button("Refresh").clicked() {
-                        self.refresh = true;
+                        self.fetch();
                     }
                 });
             });
@@ -210,29 +200,21 @@ impl ScoreBoardApp {
     fn table_ui(&mut self, ui: &mut egui::Ui) {
         use egui_extras::{Column, TableBuilder};
 
-        if let Some(result) = self.check_fetch_promise() {
-            match result {
-                FetchResponse::Success(s) => {
-                    self.scores = Some(s);
-                }
-                FetchResponse::Failure(text) => {
-                    ui.label(text);
-                }
-                FetchResponse::FailAuth => {
-                    ui.label("Failed to authenticate, refreshing token");
-                }
+        match self.check_fetch_promise() {
+            RequestStatus::Success(text) => {
+                self.score_fetcher = None;
+                self.scores = Some(serde_json::from_str(&text).unwrap());
             }
-        }
-        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
-            refresh::RefreshStatus::NotStarted => {}
-            refresh::RefreshStatus::InProgress => {}
-            refresh::RefreshStatus::Success => {
-                self.refresh = true;
+            RequestStatus::Failed(e) => {
+                self.score_fetcher = None;
+                let message = format!("Failed to fetch scores: {}", e);
+                log::error!("{}", message);
+                ui.label(message);
             }
-            refresh::RefreshStatus::Failed(text) => {
-                log::error!("Failed to refresh token: {:?}", text);
-                ui.label(text);
+            RequestStatus::InProgress => {
+                ui.label("Fetching scores...");
             }
+            RequestStatus::NotStarted => {}
         }
 
         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;

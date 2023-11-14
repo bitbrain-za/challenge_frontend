@@ -1,11 +1,13 @@
+use crate::helpers::{fetchers::Requestor, AppState};
 use std::fmt::{self, Display, Formatter};
+use std::sync::{Arc, Mutex};
 
 #[derive(
     Debug, Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize,
 )]
 pub enum Challenges {
-    #[default]
     C2331,
+    #[default]
     C2332,
     C2333,
     None,
@@ -32,6 +34,17 @@ impl Challenges {
             Challenges::C2332 => "https://raw.githubusercontent.com/bitbrain-za/judge_2331-rs/main/src/generator/2332.md".to_string(),
             Challenges::C2333 => "https://raw.githubusercontent.com/bitbrain-za/judge_2331-rs/main/src/generator/2333.md".to_string(),
             Challenges::None => "".to_string(),
+        }
+    }
+
+    pub fn fetcher(&self, app_state: Arc<Mutex<AppState>>) -> Option<Requestor> {
+        match self {
+            Challenges::None => None,
+            _ => {
+                let mut getter = Requestor::new_get(app_state, &self.get_info_url(), false);
+                getter.send();
+                Some(getter)
+            }
         }
     }
 }

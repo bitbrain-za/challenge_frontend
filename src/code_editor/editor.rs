@@ -1,15 +1,13 @@
 use crate::helpers::{
-    refresh,
-    submission::{Submission, SubmissionPromise, SubmissionResult},
-    Challenges, Languages,
+    fetchers::{RequestStatus, Requestor},
+    submission::{Submission, SubmissionResult},
+    AppState, Challenges, Languages,
 };
 use egui::*;
 use egui_commonmark::*;
 use egui_notify::Toasts;
-use gloo_net::http;
-use poll_promise::Promise;
-use std::time::Duration;
-use web_sys::RequestCredentials;
+use std::sync::{Arc, Mutex};
+use std::{borrow::BorrowMut, time::Duration};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct CodeEditor {
@@ -24,21 +22,20 @@ pub struct CodeEditor {
     #[serde(skip)]
     url: String,
     #[serde(skip)]
-    promise: SubmissionPromise,
-    #[serde(skip)]
     last_result: SubmissionResult,
     #[serde(skip)]
-    submit: bool,
-    #[serde(skip)]
     toasts: Toasts,
-    #[serde(skip)]
-    token_refresh_promise: refresh::RefreshPromise,
     #[serde(skip)]
     active_challenge: Challenges,
     #[serde(skip)]
     selected_challenge: Challenges,
+
     #[serde(skip)]
-    info_promise: Option<Promise<Result<String, String>>>,
+    info_fetcher: Option<Requestor>,
+    #[serde(skip)]
+    submitter: Option<Requestor>,
+    #[serde(skip)]
+    pub app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for CodeEditor {
@@ -51,98 +48,53 @@ impl Default for CodeEditor {
             instructions: "No Challenge Loaded".into(),
             label: "Code Editor".into(),
 
-            promise: Default::default(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
-            submit: false,
             last_result: SubmissionResult::NotStarted,
             toasts: Toasts::default(),
-            token_refresh_promise: None,
-            info_promise: None,
+            submitter: None,
+            info_fetcher: None,
             active_challenge: Challenges::None,
             selected_challenge: Challenges::default(),
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
 
 impl CodeEditor {
-    fn submit(&mut self, ctx: &egui::Context) {
-        if !self.submit {
-            return;
-        }
-        self.submit = false;
+    fn submit(&mut self) {
         let submission = self.run.clone();
-
         let url = format!("{}api/game/submit", self.url);
-        log::debug!("Sending to {}", url);
-        let ctx = ctx.clone();
-
-        let promise = Promise::spawn_local(async move {
-            let response = http::Request::post(&url)
-                .credentials(RequestCredentials::Include)
-                .json(&submission)
-                .unwrap()
-                .send()
-                .await
-                .unwrap();
-
-            let result: SubmissionResult = match response.status() {
-                200 => response.json().await.unwrap(),
-                401 => {
-                    let text = response.text().await;
-                    let text = text.map(|text| text.to_owned());
-                    let text = match text {
-                        Ok(text) => text,
-                        Err(e) => e.to_string(),
-                    };
-                    log::warn!("Auth Error: {:?}", text);
-                    SubmissionResult::NotAuthorized
-                }
-                _ => {
-                    return Err(format!("Failed to submit code: {:?}", response));
-                }
-            };
-
-            ctx.request_repaint(); // wake up UI thread
-            Ok(result)
-        });
-
-        self.promise = Some(promise);
+        let app_state = Arc::clone(&self.app_state);
+        self.submitter = submission.sender(app_state, &url);
     }
-    fn fetch(&mut self, ctx: &egui::Context) {
+
+    fn fetch(&mut self) {
         if self.active_challenge == self.selected_challenge {
             return;
         }
+        log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
-
-        let url = self.selected_challenge.get_info_url();
-        let ctx = ctx.clone();
-
-        let promise = poll_promise::Promise::spawn_local(async move {
-            let response = http::Request::get(&url);
-            let response = response.send().await.unwrap();
-            let text = response.text().await.map_err(|e| format!("{:?}", e));
-            ctx.request_repaint(); // wake up UI thread
-            text
-        });
-        self.info_promise = Some(promise);
+        let app_state = Arc::clone(&self.app_state);
+        self.info_fetcher = self.selected_challenge.fetcher(app_state);
     }
 
     fn check_info_promise(&mut self) {
-        if let Some(promise) = &self.info_promise {
-            if let Some(result) = promise.ready() {
-                match result {
-                    Ok(text) => {
-                        self.instructions = text.into();
-                    }
-                    Err(err) => {
-                        self.toasts
-                            .error(format!("Error fetching challenge info: {}", err))
-                            .set_duration(Some(Duration::from_secs(5)));
+        let getter = &mut self.info_fetcher;
 
-                        log::error!("Error fetching file: {}", err);
-                    }
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+            match result {
+                RequestStatus::Failed(err) => {
+                    self.toasts
+                        .error(format!("Error fetching challenge info: {}", err))
+                        .set_duration(Some(Duration::from_secs(5)));
+
+                    log::error!("Error fetching document: {}", err);
+                }
+                _ => {
+                    self.instructions = result.to_string();
                 }
             }
         }
@@ -151,25 +103,13 @@ impl CodeEditor {
 
 impl CodeEditor {
     pub fn panels(&mut self, ctx: &egui::Context) {
-        self.fetch(ctx);
-        self.check_info_promise();
-        match refresh::check_refresh_promise(&mut self.token_refresh_promise) {
-            refresh::RefreshStatus::InProgress => {}
-            refresh::RefreshStatus::Success => {
-                self.submit = true;
-            }
-            refresh::RefreshStatus::Failed(_) => {}
-            _ => (),
-        }
+        self.fetch();
 
-        self.submit(ctx);
-        let submission = Submission::check_submit_promise(&mut self.promise);
+        self.check_info_promise();
+
+        let submission = Submission::check_sender(&mut self.submitter);
         match submission {
             SubmissionResult::NotStarted => {}
-            SubmissionResult::NotAuthorized => {
-                self.token_refresh_promise = refresh::submit_refresh(&self.url);
-                self.last_result = submission;
-            }
             SubmissionResult::Success { score: _, message } => {
                 self.toasts
                     .info(format!("Result: {}", message))
@@ -177,6 +117,12 @@ impl CodeEditor {
             }
             _ => {
                 self.last_result = submission;
+            }
+        }
+
+        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
+            if fetcher.refresh_context() {
+                ctx.request_repaint();
             }
         }
         self.toasts.show(ctx);
@@ -250,7 +196,7 @@ impl CodeEditor {
                     self.run.challenge = self.selected_challenge;
                     match self.run.validate() {
                         Ok(_) => {
-                            self.submit = true;
+                            self.submit();
                         }
                         Err(e) => {
                             self.toasts
@@ -267,7 +213,7 @@ impl CodeEditor {
                     match self.run.validate() {
                         Ok(_) => {
                             log::debug!("Testing code");
-                            self.submit = true;
+                            self.submit();
                         }
                         Err(e) => {
                             self.toasts

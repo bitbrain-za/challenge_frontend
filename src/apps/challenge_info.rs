@@ -1,7 +1,7 @@
-use crate::helpers::Challenges;
+use crate::helpers::{fetchers::Requestor, AppState, Challenges};
 use egui_commonmark::*;
-use gloo_net::http;
-use poll_promise::Promise;
+use std::borrow::BorrowMut;
+use std::sync::{Arc, Mutex};
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum FilterOption {
@@ -12,51 +12,44 @@ enum FilterOption {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ChallengeInfoApp {
-    challenge: Challenges,
-    #[serde(skip)]
-    promise: Option<Promise<Result<String, String>>>,
+    selected_challenge: Challenges,
     #[serde(skip)]
     active_challenge: Challenges,
     #[serde(skip)]
-    refresh: bool,
+    info_fetcher: Option<Requestor>,
+    instructions: String,
+    #[serde(skip)]
+    app_state: Arc<Mutex<AppState>>,
 }
 
 impl Default for ChallengeInfoApp {
     fn default() -> Self {
         Self {
-            challenge: Challenges::default(),
-            promise: Default::default(),
-            refresh: true,
-
-            active_challenge: Challenges::default(),
+            selected_challenge: Challenges::default(),
+            info_fetcher: None,
+            active_challenge: Challenges::None,
+            instructions: "None".to_string(),
+            app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
 }
 
 impl ChallengeInfoApp {
-    fn fetch(&mut self, ctx: &egui::Context) {
-        if !self.refresh {
+    fn fetch(&mut self) {
+        if self.active_challenge == self.selected_challenge {
             return;
         }
-        self.refresh = false;
-
-        let url = self.challenge.get_info_url();
-        let ctx = ctx.clone();
-
-        let promise = poll_promise::Promise::spawn_local(async move {
-            let response = http::Request::get(&url);
-            let response = response.send().await.unwrap();
-            let text = response.text().await.map_err(|e| format!("{:?}", e));
-            ctx.request_repaint(); // wake up UI thread
-            text
-        });
-        self.promise = Some(promise);
+        log::debug!("Fetching challenge info");
+        self.active_challenge = self.selected_challenge;
+        let app_state = Arc::clone(&self.app_state);
+        self.info_fetcher = self.selected_challenge.fetcher(app_state);
     }
+    fn check_info_promise(&mut self) {
+        let getter = &mut self.info_fetcher;
 
-    fn check_for_reload(&mut self) {
-        if self.active_challenge != self.challenge {
-            self.active_challenge = self.challenge;
-            self.refresh = true;
+        if let Some(getter) = getter {
+            let result = &getter.check_promise();
+            self.instructions = result.to_string();
         }
     }
 }
@@ -66,8 +59,20 @@ impl super::App for ChallengeInfoApp {
         "📖 Challenge Info"
     }
 
+    fn set_app_state_ref(&mut self, app_state: Arc<Mutex<AppState>>) {
+        self.app_state = app_state;
+    }
+
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
-        self.fetch(ctx);
+        self.fetch();
+
+        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
+            if fetcher.refresh_context() {
+                log::debug!("Refreshing context");
+                ctx.request_repaint();
+            }
+        }
+
         egui::Window::new(self.name())
             .open(open)
             .default_width(800.0)
@@ -86,18 +91,21 @@ impl super::App for ChallengeInfoApp {
 
 impl super::View for ChallengeInfoApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        self.check_for_reload();
-
+        self.check_info_promise();
         egui::SidePanel::right("ChallengeInfoSelection")
             .resizable(false)
             .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
                     for challenge in Challenges::iter() {
-                        ui.radio_value(&mut self.challenge, challenge, format!("{}", challenge));
+                        ui.radio_value(
+                            &mut self.selected_challenge,
+                            challenge,
+                            format!("{}", challenge),
+                        );
                     }
                     ui.separator();
                     if ui.button("Refresh").clicked() {
-                        self.refresh = true;
+                        self.active_challenge = Challenges::None;
                     }
                 });
             });
@@ -105,19 +113,8 @@ impl super::View for ChallengeInfoApp {
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    if let Some(promise) = &self.promise {
-                        if let Some(result) = promise.ready() {
-                            match result {
-                                Ok(text) => {
-                                    let mut cache = CommonMarkCache::default();
-                                    CommonMarkViewer::new("viewer").show(ui, &mut cache, text);
-                                }
-                                Err(err) => {
-                                    ui.label(format!("Error fetching file: {}", err));
-                                }
-                            }
-                        }
-                    }
+                    let mut cache = CommonMarkCache::default();
+                    CommonMarkViewer::new("viewer").show(ui, &mut cache, &self.instructions);
                 });
         });
     }

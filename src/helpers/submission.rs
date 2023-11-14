@@ -1,9 +1,10 @@
+use super::{
+    fetchers::{RequestStatus, Requestor},
+    AppState, Challenges, Languages,
+};
 use std::fmt::Display;
-
-use poll_promise::Promise;
+use std::sync::{Arc, Mutex};
 use web_sys::FormData;
-
-use super::{Challenges, Languages};
 
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Submission {
@@ -16,8 +17,6 @@ pub struct Submission {
     #[serde(skip)]
     pub binary: Option<Vec<u8>>,
 }
-
-pub type SubmissionPromise = Option<Promise<Result<SubmissionResult, String>>>;
 
 impl Submission {
     pub fn to_formdata(&self) -> FormData {
@@ -46,25 +45,44 @@ impl Submission {
         form
     }
 
-    pub fn check_submit_promise(promise: &mut SubmissionPromise) -> SubmissionResult {
-        let mut result = SubmissionResult::NotStarted;
-        if let Some(p) = &promise {
-            result = SubmissionResult::Busy;
-            if let Some(response) = p.ready() {
-                match response {
-                    Ok(submission_response) => {
-                        result = submission_response.clone();
-                    }
-                    Err(error) => {
-                        result = SubmissionResult::Failure {
+    pub fn check_sender(sender: &mut Option<Requestor>) -> SubmissionResult {
+        if let Some(requestor) = sender {
+            let result = &requestor.check_promise();
+
+            match result {
+                RequestStatus::Success(text) => {
+                    *sender = None;
+                    match serde_json::from_str::<SubmissionResult>(text) {
+                        Ok(submission_response) => submission_response.clone(),
+                        Err(error) => SubmissionResult::Failure {
                             message: error.to_string(),
-                        };
+                        },
                     }
                 }
-                *promise = None;
+                RequestStatus::Failed(e) => {
+                    *sender = None;
+                    SubmissionResult::Failure {
+                        message: e.to_string(),
+                    }
+                }
+                RequestStatus::InProgress => SubmissionResult::Busy,
+                RequestStatus::NotStarted => SubmissionResult::NotStarted,
             }
+        } else {
+            SubmissionResult::NotStarted
         }
-        result
+    }
+
+    pub fn sender(&self, app_state: Arc<Mutex<AppState>>, url: &str) -> Option<Requestor> {
+        let mut submitter = if self.code.is_some() {
+            let submission = Some(serde_json::to_string(&self).unwrap());
+            Requestor::new_post(app_state, url, true, submission)
+        } else {
+            let submission = Some(self.to_formdata());
+            Requestor::new_form_post(app_state, url, true, submission)
+        };
+        submitter.send();
+        Some(submitter)
     }
 
     pub fn validate(&self) -> Result<(), String> {
