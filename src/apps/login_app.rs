@@ -412,6 +412,7 @@ impl LoginApp {
                         .register
                         .email
                         .contains(option_env!("ALLOWED_DOMAIN").unwrap_or("dummy.com"))
+                        && !cfg!(debug_assertions)
                     {
                         self.toasts
                             .error(format!(
