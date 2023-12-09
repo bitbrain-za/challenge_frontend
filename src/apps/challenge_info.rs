@@ -1,4 +1,7 @@
-use crate::helpers::{fetchers::Requestor, AppState, Challenges};
+use crate::helpers::{
+    fetchers::{RequestStatus, Requestor},
+    AppState, ChallengeCollection, Challenges,
+};
 use egui_commonmark::*;
 use std::borrow::BorrowMut;
 use std::sync::{Arc, Mutex};
@@ -20,6 +23,8 @@ pub struct ChallengeInfoApp {
     instructions: String,
     #[serde(skip)]
     app_state: Arc<Mutex<AppState>>,
+    #[serde(skip)]
+    challenges: ChallengeCollection,
 }
 
 impl Default for ChallengeInfoApp {
@@ -30,6 +35,7 @@ impl Default for ChallengeInfoApp {
             active_challenge: Challenges::None,
             instructions: "None".to_string(),
             app_state: Arc::new(Mutex::new(AppState::default())),
+            challenges: ChallengeCollection::default(),
         }
     }
 }
@@ -42,14 +48,25 @@ impl ChallengeInfoApp {
         log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
         let app_state = Arc::clone(&self.app_state);
-        self.info_fetcher = self.selected_challenge.fetcher(app_state);
+        self.info_fetcher = self.challenges.fetch(app_state);
     }
     fn check_info_promise(&mut self) {
         let getter = &mut self.info_fetcher;
 
         if let Some(getter) = getter {
             let result = &getter.check_promise();
-            self.instructions = result.to_string();
+            match result {
+                RequestStatus::NotStarted => {}
+                RequestStatus::InProgress => {}
+                RequestStatus::Success(_) => {
+                    self.info_fetcher = None;
+                }
+                RequestStatus::Failed(_) => {
+                    self.info_fetcher = None;
+                }
+            }
+            self.challenges = ChallengeCollection::from_json(&result.to_string());
+            self.instructions = self.challenges.get_instructions(self.selected_challenge);
         }
     }
 }
