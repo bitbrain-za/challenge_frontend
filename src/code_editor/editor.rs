@@ -1,7 +1,7 @@
 use crate::helpers::{
     fetchers::{RequestStatus, Requestor},
     submission::{Submission, SubmissionResult},
-    AppState, Challenges, Languages,
+    AppState, ChallengeCollection, Challenges, Languages,
 };
 use egui::*;
 use egui_commonmark::*;
@@ -36,6 +36,8 @@ pub struct CodeEditor {
     submitter: Option<Requestor>,
     #[serde(skip)]
     pub app_state: Arc<Mutex<AppState>>,
+    #[serde(skip)]
+    challenges: ChallengeCollection,
 }
 
 impl Default for CodeEditor {
@@ -58,6 +60,7 @@ impl Default for CodeEditor {
             active_challenge: Challenges::None,
             selected_challenge: Challenges::default(),
             app_state: Arc::new(Mutex::new(AppState::default())),
+            challenges: ChallengeCollection::default(),
         }
     }
 }
@@ -77,7 +80,7 @@ impl CodeEditor {
         log::debug!("Fetching challenge info");
         self.active_challenge = self.selected_challenge;
         let app_state = Arc::clone(&self.app_state);
-        self.info_fetcher = self.selected_challenge.fetcher(app_state);
+        self.info_fetcher = self.challenges.fetch(app_state);
     }
 
     fn check_info_promise(&mut self) {
@@ -86,17 +89,21 @@ impl CodeEditor {
         if let Some(getter) = getter {
             let result = &getter.check_promise();
             match result {
+                RequestStatus::NotStarted => {}
+                RequestStatus::InProgress => {}
+                RequestStatus::Success(_) => {
+                    self.info_fetcher = None;
+                }
                 RequestStatus::Failed(err) => {
                     self.toasts
                         .error(format!("Error fetching challenge info: {}", err))
                         .set_duration(Some(Duration::from_secs(5)));
 
-                    log::error!("Error fetching document: {}", err);
-                }
-                _ => {
-                    self.instructions = result.to_string();
+                    self.info_fetcher = None;
                 }
             }
+            self.challenges = ChallengeCollection::from_json(&result.to_string());
+            self.instructions = self.challenges.get_instructions(self.selected_challenge);
         }
     }
 }
