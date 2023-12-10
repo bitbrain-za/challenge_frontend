@@ -195,7 +195,11 @@ impl super::View for ScoreBoardApp {
                     );
                     ui.separator();
                     if ui.button("Refresh").clicked() {
-                        self.app_state.lock().unwrap().update_activity_timer();
+                        self.app_state
+                            .clone()
+                            .lock()
+                            .unwrap()
+                            .update_activity_timer();
                         self.fetch();
                     }
                 });
