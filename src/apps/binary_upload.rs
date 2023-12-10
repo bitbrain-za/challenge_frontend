@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use crate::helpers::{
     fetchers::Requestor,
     submission::{Submission, SubmissionResult},
-    AppState, Challenges, Languages,
+    AppState, Languages,
 };
 use std::future::Future;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -107,16 +107,16 @@ impl super::View for BinaryUpload {
             });
 
         egui::ComboBox::from_label("Challenge")
-            .selected_text(format!("{}", self.run.challenge))
+            .selected_text(self.run.challenge.clone().unwrap_or("None".to_string()))
             .show_ui(ui, |ui| {
                 ui.style_mut().wrap = Some(false);
                 ui.set_min_width(60.0);
 
-                for challenge in Challenges::iter() {
+                for challenge in self.app_state.lock().unwrap().challenges.items.iter() {
                     ui.selectable_value(
                         &mut self.run.challenge,
-                        challenge,
-                        format!("{}", challenge),
+                        Some(challenge.command.clone()),
+                        &challenge.command,
                     );
                 }
             });

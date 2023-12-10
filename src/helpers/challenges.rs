@@ -1,45 +1,5 @@
 use crate::helpers::{fetchers::Requestor, AppState};
-use std::fmt::{self, Display, Formatter};
 use std::sync::{Arc, Mutex};
-
-#[derive(
-    Debug, Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize,
-)]
-//todo delete this and di it from the fetched data
-pub enum Challenges {
-    C2331,
-    #[default]
-    C2332,
-    C2333,
-    None,
-}
-
-impl Challenges {
-    pub fn iter() -> impl Iterator<Item = Self> {
-        use Challenges::*;
-        [C2331, C2332, C2333].iter().copied()
-    }
-
-    fn _next(&self) -> Self {
-        match self {
-            Challenges::C2331 => Challenges::C2332,
-            Challenges::C2332 => Challenges::C2333,
-            Challenges::C2333 => Challenges::C2331,
-            Challenges::None => Challenges::None,
-        }
-    }
-}
-
-impl Display for Challenges {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Challenges::C2331 => write!(f, "2331"),
-            Challenges::C2332 => write!(f, "2332"),
-            Challenges::C2333 => write!(f, "2333"),
-            Challenges::None => write!(f, "None"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Challenge {
@@ -73,6 +33,7 @@ impl ChallengeCollection {
         }
     }
 
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     pub fn fetch(&mut self, app_state: Arc<Mutex<AppState>>) -> Option<Requestor> {
         let url = format!("{}api/game/challenge", self.url);
 
@@ -83,6 +44,7 @@ impl ChallengeCollection {
         Some(getter)
     }
 
+    #[allow(dead_code)] //inhibit warnings when target =/= WASM
     pub fn from_json(json: &str) -> Self {
         let items: Vec<Challenge> = serde_json::from_str(json).unwrap_or_default();
         log::debug!("Found {} challenges", items.len());
@@ -92,21 +54,17 @@ impl ChallengeCollection {
         }
     }
 
-    pub fn get_instructions(&self, challenge: Challenges) -> Option<String> {
+    pub fn get_instructions(&self, challenge: String) -> Option<String> {
         log::debug!("Getting instructions for {}", challenge);
         self.items
             .iter()
-            .find(|c| c.command == challenge.to_string())
+            .find(|c| c.command == challenge)
             .map(|c| c.doc.clone())
     }
 
-    pub fn get_table(&self, challenge: Challenges) -> String {
+    pub fn get_table(&self, challenge: String) -> String {
         log::debug!("Getting instructions for {}", challenge);
-        match self
-            .items
-            .iter()
-            .find(|c| c.command == challenge.to_string())
-        {
+        match self.items.iter().find(|c| c.command == challenge) {
             Some(c) => c.table.clone(),
             None => String::from("No challenge found with that command"),
         }

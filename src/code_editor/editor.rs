@@ -1,7 +1,7 @@
 use crate::helpers::{
     fetchers::Requestor,
     submission::{Submission, SubmissionResult},
-    AppState, Challenges, Languages,
+    AppState, Languages,
 };
 use egui::*;
 use egui_commonmark::*;
@@ -26,9 +26,9 @@ pub struct CodeEditor {
     #[serde(skip)]
     toasts: Toasts,
     #[serde(skip)]
-    active_challenge: Challenges,
+    active_challenge: Option<String>,
     #[serde(skip)]
-    selected_challenge: Challenges,
+    selected_challenge: String,
 
     #[serde(skip)]
     submitter: Option<Requestor>,
@@ -52,8 +52,8 @@ impl Default for CodeEditor {
             last_result: SubmissionResult::NotStarted,
             toasts: Toasts::default(),
             submitter: None,
-            active_challenge: Challenges::None,
-            selected_challenge: Challenges::default(),
+            active_challenge: None,
+            selected_challenge: "".into(),
             app_state: Arc::new(Mutex::new(AppState::default())),
         }
     }
@@ -95,14 +95,19 @@ impl CodeEditor {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        if self.active_challenge != self.selected_challenge {
-            self.active_challenge = self.selected_challenge;
+        let reload = match self.active_challenge.clone() {
+            None => true,
+            Some(active) => active != self.selected_challenge,
+        };
+
+        if reload {
+            self.active_challenge = Some(self.selected_challenge.clone());
             self.instructions = self
                 .app_state
                 .lock()
                 .unwrap()
                 .challenges
-                .get_instructions(self.selected_challenge)
+                .get_instructions(self.selected_challenge.clone())
                 .unwrap_or("Unable to load instructions".to_string());
         }
 
@@ -121,16 +126,16 @@ impl CodeEditor {
 
             ui.horizontal(|ui| {
                 egui::ComboBox::from_label("Challenge")
-                    .selected_text(format!("{}", self.selected_challenge))
+                    .selected_text(&self.selected_challenge)
                     .show_ui(ui, |ui| {
                         ui.style_mut().wrap = Some(false);
                         ui.set_min_width(60.0);
 
-                        for challenge in Challenges::iter() {
+                        for challenge in self.app_state.lock().unwrap().challenges.items.iter() {
                             ui.selectable_value(
                                 &mut self.selected_challenge,
-                                challenge,
-                                format!("{}", challenge),
+                                challenge.command.clone(),
+                                &challenge.command,
                             );
                         }
                     });
@@ -162,7 +167,7 @@ impl CodeEditor {
                     log::debug!("Submitting code");
                     self.run.test = false;
                     self.run.code = Some(self.code.clone());
-                    self.run.challenge = self.selected_challenge;
+                    self.run.challenge = Some(self.selected_challenge.clone());
                     match self.run.validate() {
                         Ok(_) => {
                             self.submit();
@@ -178,7 +183,7 @@ impl CodeEditor {
                 if ui.button("Test").clicked() {
                     self.run.test = true;
                     self.run.code = Some(self.code.clone());
-                    self.run.challenge = self.selected_challenge;
+                    self.run.challenge = Some(self.selected_challenge.clone());
                     match self.run.validate() {
                         Ok(_) => {
                             log::debug!("Testing code");

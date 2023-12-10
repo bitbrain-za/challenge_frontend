@@ -1,6 +1,6 @@
 use super::{
     fetchers::{RequestStatus, Requestor},
-    AppState, Challenges, Languages,
+    AppState, Languages,
 };
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
@@ -8,7 +8,7 @@ use web_sys::FormData;
 
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Submission {
-    pub challenge: Challenges,
+    pub challenge: Option<String>,
     pub filename: String,
     pub language: Languages,
     pub test: bool,
@@ -19,10 +19,14 @@ pub struct Submission {
 }
 
 impl Submission {
-    pub fn to_formdata(&self) -> FormData {
+    pub fn to_formdata(&self) -> Option<FormData> {
+        let challenge = match &self.challenge {
+            Some(challenge) => challenge,
+            None => return None,
+        };
+
         let form = FormData::new().unwrap();
-        form.append_with_str("challenge", &self.challenge.to_string())
-            .unwrap();
+        form.append_with_str("challenge", challenge).unwrap();
         form.append_with_str("filename", &self.filename).unwrap();
         form.append_with_str("language", &self.language.to_string())
             .unwrap();
@@ -42,7 +46,7 @@ impl Submission {
 
         log::info!("Form: {:?}", form);
 
-        form
+        Some(form)
     }
 
     pub fn check_sender(sender: &mut Option<Requestor>) -> SubmissionResult {
@@ -78,7 +82,7 @@ impl Submission {
             let submission = Some(serde_json::to_string(&self).unwrap());
             Requestor::new_post(app_state, url, true, submission)
         } else {
-            let submission = Some(self.to_formdata());
+            let submission = self.to_formdata();
             Requestor::new_form_post(app_state, url, true, submission)
         };
         submitter.send();
@@ -86,7 +90,7 @@ impl Submission {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.challenge == Challenges::None {
+        if self.challenge.is_none() {
             return Err("Challenge not selected".to_string());
         }
         if self.filename.is_empty() {

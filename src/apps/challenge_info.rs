@@ -1,4 +1,4 @@
-use crate::helpers::{AppState, Challenges};
+use crate::helpers::AppState;
 use egui_commonmark::*;
 use std::sync::{Arc, Mutex};
 
@@ -11,9 +11,9 @@ enum FilterOption {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ChallengeInfoApp {
-    selected_challenge: Challenges,
+    selected_challenge: String,
     #[serde(skip)]
-    active_challenge: Challenges,
+    active_challenge: Option<String>,
     instructions: String,
     #[serde(skip)]
     app_state: Arc<Mutex<AppState>>,
@@ -22,8 +22,8 @@ pub struct ChallengeInfoApp {
 impl Default for ChallengeInfoApp {
     fn default() -> Self {
         Self {
-            selected_challenge: Challenges::default(),
-            active_challenge: Challenges::None,
+            selected_challenge: "".to_string(),
+            active_challenge: None,
             instructions: "None".to_string(),
             app_state: Arc::new(Mutex::new(AppState::default())),
         }
@@ -40,14 +40,19 @@ impl super::App for ChallengeInfoApp {
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
-        if self.active_challenge != self.selected_challenge {
-            self.active_challenge = self.selected_challenge;
+        let challenges_differ = match self.active_challenge.clone() {
+            None => true,
+            Some(active) => active != self.selected_challenge,
+        };
+
+        if challenges_differ {
+            self.active_challenge = Some(self.selected_challenge.clone());
             self.instructions = self
                 .app_state
                 .lock()
                 .unwrap()
                 .challenges
-                .get_instructions(self.selected_challenge)
+                .get_instructions(self.selected_challenge.clone())
                 .unwrap_or("Unable to load instructions".to_string());
         }
 
@@ -73,16 +78,16 @@ impl super::View for ChallengeInfoApp {
             .resizable(false)
             .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
-                    for challenge in Challenges::iter() {
+                    for challenge in self.app_state.lock().unwrap().challenges.items.iter() {
                         ui.radio_value(
                             &mut self.selected_challenge,
-                            challenge,
-                            format!("{}", challenge),
+                            challenge.command.clone(),
+                            &challenge.command,
                         );
                     }
                     ui.separator();
                     if ui.button("Refresh").clicked() {
-                        self.active_challenge = Challenges::None;
+                        self.active_challenge = None;
                     }
                 });
             });

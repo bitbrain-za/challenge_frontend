@@ -1,6 +1,6 @@
 use crate::helpers::{
     fetchers::{RequestStatus, Requestor},
-    AppState, Challenges,
+    AppState,
 };
 use scoreboard_db::Builder as FilterBuilder;
 use scoreboard_db::Filter as ScoreBoardFilter;
@@ -24,11 +24,11 @@ enum FetchResponse {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ScoreBoardApp {
-    challenge: Challenges,
+    selected_challenge: String,
     filter: FilterOption,
     sort_column: String,
 
-    active_challenge: Challenges,
+    active_challenge: Option<String>,
     active_filter: FilterOption,
     active_sort_column: String,
 
@@ -45,14 +45,14 @@ pub struct ScoreBoardApp {
 impl Default for ScoreBoardApp {
     fn default() -> Self {
         Self {
-            challenge: Challenges::default(),
+            selected_challenge: "".to_string(),
             filter: FilterOption::All,
             sort_column: "time".to_string(),
             url: option_env!("BACKEND_URL")
                 .unwrap_or("http://123.4.5.6:3000/")
                 .to_string(),
 
-            active_challenge: Challenges::None,
+            active_challenge: None,
             active_filter: FilterOption::All,
             active_sort_column: "time".to_string(),
             scores: None,
@@ -73,7 +73,7 @@ impl ScoreBoardApp {
                 .lock()
                 .unwrap()
                 .challenges
-                .get_table(self.challenge)
+                .get_table(self.selected_challenge.clone())
         );
 
         log::debug!("Fetching scoreboard info");
@@ -84,11 +84,15 @@ impl ScoreBoardApp {
     }
 
     fn check_for_reload(&mut self) -> bool {
-        if self.active_challenge != self.challenge
+        let challenges_differ = match self.active_challenge.clone() {
+            None => true,
+            Some(active) => active != self.selected_challenge,
+        };
+        if challenges_differ
             || self.active_filter != self.filter
             || self.active_sort_column != self.sort_column
         {
-            self.active_challenge = self.challenge;
+            self.active_challenge = Some(self.selected_challenge.clone());
             self.active_filter = self.filter;
             self.active_sort_column = self.sort_column.clone();
             return true;
@@ -161,16 +165,17 @@ impl super::View for ScoreBoardApp {
             .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
                     egui::ComboBox::from_label("Challenge")
-                        .selected_text(format!("{}", self.challenge))
+                        .selected_text(self.selected_challenge.clone())
                         .show_ui(ui, |ui| {
                             ui.style_mut().wrap = Some(false);
                             ui.set_min_width(60.0);
 
-                            for challenge in Challenges::iter() {
+                            for challenge in self.app_state.lock().unwrap().challenges.items.iter()
+                            {
                                 ui.selectable_value(
-                                    &mut self.challenge,
-                                    challenge,
-                                    format!("{}", challenge),
+                                    &mut self.selected_challenge,
+                                    challenge.command.clone(),
+                                    &challenge.command,
                                 );
                             }
                         });
