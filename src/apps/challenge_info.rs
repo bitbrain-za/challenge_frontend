@@ -1,9 +1,5 @@
-use crate::helpers::{
-    fetchers::{RequestStatus, Requestor},
-    AppState, ChallengeCollection, Challenges,
-};
+use crate::helpers::{AppState, Challenges};
 use egui_commonmark::*;
-use std::borrow::BorrowMut;
 use std::sync::{Arc, Mutex};
 
 #[derive(PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
@@ -18,55 +14,18 @@ pub struct ChallengeInfoApp {
     selected_challenge: Challenges,
     #[serde(skip)]
     active_challenge: Challenges,
-    #[serde(skip)]
-    info_fetcher: Option<Requestor>,
     instructions: String,
     #[serde(skip)]
     app_state: Arc<Mutex<AppState>>,
-    #[serde(skip)]
-    challenges: ChallengeCollection,
 }
 
 impl Default for ChallengeInfoApp {
     fn default() -> Self {
         Self {
             selected_challenge: Challenges::default(),
-            info_fetcher: None,
             active_challenge: Challenges::None,
             instructions: "None".to_string(),
             app_state: Arc::new(Mutex::new(AppState::default())),
-            challenges: ChallengeCollection::default(),
-        }
-    }
-}
-
-impl ChallengeInfoApp {
-    fn fetch(&mut self) {
-        if self.active_challenge == self.selected_challenge {
-            return;
-        }
-        log::debug!("Fetching challenge info");
-        self.active_challenge = self.selected_challenge;
-        let app_state = Arc::clone(&self.app_state);
-        self.info_fetcher = self.challenges.fetch(app_state);
-    }
-    fn check_info_promise(&mut self) {
-        let getter = &mut self.info_fetcher;
-
-        if let Some(getter) = getter {
-            let result = &getter.check_promise();
-            match result {
-                RequestStatus::NotStarted => {}
-                RequestStatus::InProgress => {}
-                RequestStatus::Success(_) => {
-                    self.info_fetcher = None;
-                }
-                RequestStatus::Failed(_) => {
-                    self.info_fetcher = None;
-                }
-            }
-            self.challenges = ChallengeCollection::from_json(&result.to_string());
-            self.instructions = self.challenges.get_instructions(self.selected_challenge);
         }
     }
 }
@@ -81,13 +40,15 @@ impl super::App for ChallengeInfoApp {
     }
 
     fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
-        self.fetch();
-
-        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
-            if fetcher.refresh_context() {
-                log::debug!("Refreshing context");
-                ctx.request_repaint();
-            }
+        if self.active_challenge != self.selected_challenge {
+            self.active_challenge = self.selected_challenge;
+            self.instructions = self
+                .app_state
+                .lock()
+                .unwrap()
+                .challenges
+                .get_instructions(self.selected_challenge)
+                .unwrap_or("Unable to load instructions".to_string());
         }
 
         egui::Window::new(self.name())
@@ -108,7 +69,6 @@ impl super::App for ChallengeInfoApp {
 
 impl super::View for ChallengeInfoApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        self.check_info_promise();
         egui::SidePanel::right("ChallengeInfoSelection")
             .resizable(false)
             .show_inside(ui, |ui| {

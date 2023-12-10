@@ -1,3 +1,4 @@
+use crate::helpers::ChallengeCollection;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -9,6 +10,7 @@ pub enum LoginState {
 pub struct AppState {
     pub counter: usize,
     pub logged_in: LoginState,
+    pub challenges: ChallengeCollection,
 }
 
 impl Default for AppState {
@@ -16,6 +18,7 @@ impl Default for AppState {
         Self {
             counter: 1,
             logged_in: LoginState::LoggedOut,
+            challenges: ChallengeCollection::default(),
         }
     }
 }

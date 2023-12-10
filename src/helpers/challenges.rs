@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 #[derive(
     Debug, Default, PartialEq, Eq, Hash, Copy, Clone, serde::Deserialize, serde::Serialize,
 )]
+//todo delete this and di it from the fetched data
 pub enum Challenges {
     C2331,
     #[default]
@@ -91,15 +92,23 @@ impl ChallengeCollection {
         }
     }
 
-    pub fn get_instructions(&self, challenge: Challenges) -> String {
+    pub fn get_instructions(&self, challenge: Challenges) -> Option<String> {
+        log::debug!("Getting instructions for {}", challenge);
+        self.items
+            .iter()
+            .find(|c| c.command == challenge.to_string())
+            .map(|c| c.doc.clone())
+    }
+
+    pub fn get_table(&self, challenge: Challenges) -> String {
         log::debug!("Getting instructions for {}", challenge);
         match self
             .items
             .iter()
             .find(|c| c.command == challenge.to_string())
         {
-            Some(c) => c.doc.clone(),
-            None => String::from("No instructions found"),
+            Some(c) => c.table.clone(),
+            None => String::from("No challenge found with that command"),
         }
     }
 }

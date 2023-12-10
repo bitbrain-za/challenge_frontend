@@ -1,13 +1,13 @@
 use crate::helpers::{
-    fetchers::{RequestStatus, Requestor},
+    fetchers::Requestor,
     submission::{Submission, SubmissionResult},
-    AppState, ChallengeCollection, Challenges, Languages,
+    AppState, Challenges, Languages,
 };
 use egui::*;
 use egui_commonmark::*;
 use egui_notify::Toasts;
 use std::sync::{Arc, Mutex};
-use std::{borrow::BorrowMut, time::Duration};
+use std::time::Duration;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct CodeEditor {
@@ -31,13 +31,9 @@ pub struct CodeEditor {
     selected_challenge: Challenges,
 
     #[serde(skip)]
-    info_fetcher: Option<Requestor>,
-    #[serde(skip)]
     submitter: Option<Requestor>,
     #[serde(skip)]
     pub app_state: Arc<Mutex<AppState>>,
-    #[serde(skip)]
-    challenges: ChallengeCollection,
 }
 
 impl Default for CodeEditor {
@@ -56,11 +52,9 @@ impl Default for CodeEditor {
             last_result: SubmissionResult::NotStarted,
             toasts: Toasts::default(),
             submitter: None,
-            info_fetcher: None,
             active_challenge: Challenges::None,
             selected_challenge: Challenges::default(),
             app_state: Arc::new(Mutex::new(AppState::default())),
-            challenges: ChallengeCollection::default(),
         }
     }
 }
@@ -72,48 +66,10 @@ impl CodeEditor {
         let app_state = Arc::clone(&self.app_state);
         self.submitter = submission.sender(app_state, &url);
     }
-
-    fn fetch(&mut self) {
-        if self.active_challenge == self.selected_challenge {
-            return;
-        }
-        log::debug!("Fetching challenge info");
-        self.active_challenge = self.selected_challenge;
-        let app_state = Arc::clone(&self.app_state);
-        self.info_fetcher = self.challenges.fetch(app_state);
-    }
-
-    fn check_info_promise(&mut self) {
-        let getter = &mut self.info_fetcher;
-
-        if let Some(getter) = getter {
-            let result = &getter.check_promise();
-            match result {
-                RequestStatus::NotStarted => {}
-                RequestStatus::InProgress => {}
-                RequestStatus::Success(_) => {
-                    self.info_fetcher = None;
-                }
-                RequestStatus::Failed(err) => {
-                    self.toasts
-                        .error(format!("Error fetching challenge info: {}", err))
-                        .set_duration(Some(Duration::from_secs(5)));
-
-                    self.info_fetcher = None;
-                }
-            }
-            self.challenges = ChallengeCollection::from_json(&result.to_string());
-            self.instructions = self.challenges.get_instructions(self.selected_challenge);
-        }
-    }
 }
 
 impl CodeEditor {
     pub fn panels(&mut self, ctx: &egui::Context) {
-        self.fetch();
-
-        self.check_info_promise();
-
         let submission = Submission::check_sender(&mut self.submitter);
         match submission {
             SubmissionResult::NotStarted => {}
@@ -127,11 +83,6 @@ impl CodeEditor {
             }
         }
 
-        if let Some(fetcher) = self.info_fetcher.borrow_mut() {
-            if fetcher.refresh_context() {
-                ctx.request_repaint();
-            }
-        }
         self.toasts.show(ctx);
 
         egui::TopBottomPanel::bottom("code_editor_bottom").show(ctx, |_ui| {
@@ -144,6 +95,17 @@ impl CodeEditor {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        if self.active_challenge != self.selected_challenge {
+            self.active_challenge = self.selected_challenge;
+            self.instructions = self
+                .app_state
+                .lock()
+                .unwrap()
+                .challenges
+                .get_instructions(self.selected_challenge)
+                .unwrap_or("Unable to load instructions".to_string());
+        }
+
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 let _ = ui.button("Hotkeys").on_hover_ui(nested_hotkeys_ui);

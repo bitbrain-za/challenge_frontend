@@ -66,9 +66,17 @@ impl ScoreBoardApp {
     fn fetch(&mut self) {
         self.scores = None;
 
-        let url = format!("{}api/game/scores/{}", self.url, self.challenge);
+        let url = format!(
+            "{}api/game/scores/{}",
+            self.url,
+            self.app_state
+                .lock()
+                .unwrap()
+                .challenges
+                .get_table(self.challenge)
+        );
 
-        log::debug!("Fetching challenge info");
+        log::debug!("Fetching scoreboard info");
         let app_state = Arc::clone(&self.app_state);
         let mut getter = Requestor::new_get(app_state, &url, true);
         getter.send();
