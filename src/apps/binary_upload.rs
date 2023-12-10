@@ -51,7 +51,7 @@ impl Default for BinaryUpload {
 impl BinaryUpload {
     fn submit(&mut self) {
         let submission = self.run.clone();
-        let url = format!("{}api/game/submit", self.url);
+        let url = format!("{}api/game/binary", self.url);
         let app_state = Arc::clone(&self.app_state);
         self.submitter = submission.sender(app_state, &url);
     }
@@ -76,6 +76,7 @@ impl super::App for BinaryUpload {
         if let Ok(f) = self.binary_channel.1.try_recv() {
             self.run.filename = f.filename;
             self.run.binary = Some(f.bytes);
+            ctx.request_repaint();
         }
 
         let submission = Submission::check_sender(&mut self.submitter);
@@ -83,6 +84,7 @@ impl super::App for BinaryUpload {
             SubmissionResult::NotStarted => {}
             _ => {
                 self.last_result = submission;
+                ctx.request_repaint();
             }
         }
         if let Some(fetcher) = self.submitter.borrow_mut() {
@@ -151,6 +153,11 @@ impl super::View for BinaryUpload {
                     }
                 }
             }
+        }
+
+        if SubmissionResult::NotStarted != self.last_result {
+            ui.separator();
+            ui.horizontal_wrapped(|ui| ui.label(format!("Result: {}", self.last_result)));
         }
     }
 }
