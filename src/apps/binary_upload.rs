@@ -127,6 +127,7 @@ impl super::View for BinaryUpload {
         ui.separator();
 
         if ui.button(self.run.filename.clone()).clicked() {
+            self.app_state.lock().unwrap().update_activity_timer();
             let sender = self.binary_channel.0.clone();
             let task = rfd::AsyncFileDialog::new().pick_file();
             execute(async move {
@@ -144,6 +145,7 @@ impl super::View for BinaryUpload {
         if "Select Binary" != &self.run.filename {
             ui.separator();
             if ui.button("Submit").clicked() {
+                self.app_state.lock().unwrap().update_activity_timer();
                 match self.run.validate() {
                     Ok(_) => {
                         self.submit();

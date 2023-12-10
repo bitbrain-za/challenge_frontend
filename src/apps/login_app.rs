@@ -309,6 +309,7 @@ impl LoginApp {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 if ui.button("Logout").clicked() {
+                    self.app_state.lock().unwrap().update_activity_timer();
                     self.submit_logout()
                 }
             });
@@ -343,17 +344,20 @@ impl LoginApp {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 if ui.button("Login").clicked() {
+                    self.app_state.lock().unwrap().update_activity_timer();
                     self.submit_login();
                 }
             });
             ui.vertical(|ui| {
                 if ui.button("Forgot Password").clicked() {
+                    self.app_state.lock().unwrap().update_activity_timer();
                     self.submit_forgot_password();
                 }
             });
             ui.separator();
             ui.vertical(|ui| {
                 if ui.button("Register").clicked() {
+                    self.app_state.lock().unwrap().update_activity_timer();
                     self.register = RegisterSchema::default();
                     self.state = LoginAppState::RegisterNewUser;
                 }
@@ -400,6 +404,7 @@ impl LoginApp {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 if ui.button("Register").clicked() {
+                    self.app_state.lock().unwrap().update_activity_timer();
                     if self.register.password != self.register.confirm_password {
                         self.toasts
                             .error("Passwords do not match")
@@ -428,6 +433,7 @@ impl LoginApp {
             ui.separator();
             ui.vertical(|ui| {
                 if ui.button("Cancel").clicked() {
+                    self.app_state.lock().unwrap().update_activity_timer();
                     self.register = RegisterSchema::default();
                     self.state = LoginAppState::Login;
                 }

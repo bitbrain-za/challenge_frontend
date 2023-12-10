@@ -87,6 +87,7 @@ impl super::View for ChallengeInfoApp {
                     }
                     ui.separator();
                     if ui.button("Refresh").clicked() {
+                        self.app_state.lock().unwrap().update_activity_timer();
                         self.active_challenge = None;
                     }
                 });

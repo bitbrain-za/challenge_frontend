@@ -132,6 +132,7 @@ impl PasswordResetApp {
         ui.separator();
         ui.horizontal(|ui| {
             if ui.button("Submit").clicked() {
+                self.app_state.lock().unwrap().update_activity_timer();
                 if self.new_password != self.confirm_password {
                     self.toasts
                         .error("Passwords do not match")
