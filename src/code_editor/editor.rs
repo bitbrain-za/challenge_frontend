@@ -164,6 +164,11 @@ impl CodeEditor {
                 });
                 ui.separator();
                 if ui.button("Submit").clicked() {
+                    self.app_state
+                        .clone()
+                        .lock()
+                        .unwrap()
+                        .update_activity_timer();
                     log::debug!("Submitting code");
                     self.run.test = false;
                     self.run.code = Some(self.code.clone());
@@ -181,6 +186,11 @@ impl CodeEditor {
                     }
                 }
                 if ui.button("Test").clicked() {
+                    self.app_state
+                        .clone()
+                        .lock()
+                        .unwrap()
+                        .update_activity_timer();
                     self.run.test = true;
                     self.run.code = Some(self.code.clone());
                     self.run.challenge = Some(self.selected_challenge.clone());

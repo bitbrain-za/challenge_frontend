@@ -162,6 +162,11 @@ impl super::View for CodeEditor {
             ui.vertical(|ui| {
                 if ui.button("Submit").clicked() {
                     log::debug!("Submitting code");
+                    self.app_state
+                        .clone()
+                        .lock()
+                        .unwrap()
+                        .update_activity_timer();
                     self.as_submission();
                     match self.run.validate() {
                         Ok(_) => {
@@ -174,6 +179,11 @@ impl super::View for CodeEditor {
                 }
                 if ui.button("Test").clicked() {
                     log::debug!("Testing code");
+                    self.app_state
+                        .clone()
+                        .lock()
+                        .unwrap()
+                        .update_activity_timer();
                     self.as_test_submission();
                     match self.run.validate() {
                         Ok(_) => {

@@ -1,6 +1,6 @@
 use crate::{
     apps::{self},
-    background_processes::ChallengeFetcher,
+    background_processes::{ChallengeFetcher, LoginFetcher},
     code_editor,
     helpers::AppState,
 };
@@ -86,6 +86,8 @@ pub struct WrapApp {
     app_state: Arc<Mutex<AppState>>,
     #[serde(skip)]
     challenge_fetcher: ChallengeFetcher,
+    #[serde(skip)]
+    login_fetcher: LoginFetcher,
 }
 
 impl Default for WrapApp {
@@ -95,6 +97,7 @@ impl Default for WrapApp {
             state: State::default(),
             app_state,
             challenge_fetcher: ChallengeFetcher::default(),
+            login_fetcher: LoginFetcher::default(),
         }
     }
 }
@@ -108,6 +111,7 @@ impl WrapApp {
             state: State::default(),
             app_state: Arc::clone(&app_state),
             challenge_fetcher: ChallengeFetcher::new(app_state.clone()),
+            login_fetcher: LoginFetcher::new(app_state.clone()),
             #[cfg(any(feature = "glow", feature = "wgpu"))]
             custom3d: crate::apps::Custom3d::new(cc),
         };
@@ -164,6 +168,7 @@ impl eframe::App for WrapApp {
         }
 
         self.challenge_fetcher.tick();
+        self.login_fetcher.tick();
 
         #[cfg(not(target_arch = "wasm32"))]
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F11)) {
